@@ -189,20 +189,18 @@ export default function EditPermutationUI() {
       {/* STEP 1: Set initial draft */}
       <div className="space-y-2">
         <label className="block font-medium">Initial Draft:</label>
-        <div className="flex gap-2">
-          <input
-            className="border p-2 flex-1"
-            value={defaultDraft}
-            onChange={(e) => setDefaultDraft(e.target.value)}
-            placeholder="Type starting text…"
-          />
-          <button
-            className="bg-green-600 text-white px-4 py-2 rounded"
-            onClick={initializeDraft}
-          >
-            Set
-          </button>
-        </div>
+        <textarea
+          className="w-full p-2 border rounded bg-white whitespace-pre-wrap min-h-[80px]"
+          value={defaultDraft}
+          onChange={(e) => setDefaultDraft(e.target.value)}
+          placeholder="Type starting text…"
+        />
+        <button
+          className="bg-green-600 text-white px-4 py-2 rounded"
+          onClick={initializeDraft}
+        >
+          Set
+        </button>
       </div>
 
       {drafts.length > 0 && (
@@ -278,5 +276,3 @@ export default function EditPermutationUI() {
     </div>
   );
 }
-
-
