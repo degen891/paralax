@@ -89,18 +89,20 @@ export default function EditPermutationUI() {
     const removedText = oldText.slice(prefixLen, oldText.length - suffixLen);
     const prefix = oldText.slice(0, prefixLen);
 
-    // Build suggestion object
     const suggestion = {
       prefix,
+      offset: prefixLen,
       removedLen,
       removedText,
       insertedText,
       conditionParts,
     };
 
-    // Apply this suggestion to every draft
+    const isInsertion = suggestion.removedLen === 0 && suggestion.insertedText.length > 0;
+
     const newSet = new Set(drafts);
     const edges = [];
+
     drafts.forEach((d) => {
       // check user-set conditions
       if (
@@ -109,20 +111,32 @@ export default function EditPermutationUI() {
       ) {
         return;
       }
-      // find prefix position
-      const pos = d.indexOf(suggestion.prefix);
-      if (pos === -1) return;
-      const start = pos + suggestion.prefix.length;
-      // ensure removal matches
-      if (
-        suggestion.removedLen > 0 &&
-        d.substr(start, suggestion.removedLen) !== suggestion.removedText
-      ) {
-        return;
+
+      let newDraft;
+
+      if (isInsertion) {
+        // Insert at same offset (clamped to draft length)
+        let insertAt = suggestion.offset;
+        if (insertAt > d.length) insertAt = d.length;
+        newDraft =
+          d.slice(0, insertAt) + suggestion.insertedText + d.slice(insertAt);
+      } else {
+        // Removal or replace
+        const pos = d.indexOf(suggestion.prefix);
+        if (pos === -1) return;
+        const start = pos + suggestion.prefix.length;
+        if (
+          suggestion.removedLen > 0 &&
+          d.substr(start, suggestion.removedLen) !== suggestion.removedText
+        ) {
+          return;
+        }
+        newDraft =
+          d.slice(0, start) +
+          suggestion.insertedText +
+          d.slice(start + suggestion.removedLen);
       }
-      // construct new draft
-      const newDraft =
-        d.slice(0, start) + suggestion.insertedText + d.slice(start + suggestion.removedLen);
+
       if (newDraft !== d && !newSet.has(newDraft)) {
         newSet.add(newDraft);
         edges.push({ from: d, to: newDraft });
@@ -133,7 +147,6 @@ export default function EditPermutationUI() {
     saveHistory(Array.from(newSet), edges);
     setConditionParts([]);
     setHighlighted([]);
-    // reset edit buffer to selectedDraft
     setCurrentEditText(selectedDraft);
   }
 
@@ -265,3 +278,4 @@ export default function EditPermutationUI() {
     </div>
   );
 }
+
