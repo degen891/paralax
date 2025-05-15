@@ -2,21 +2,27 @@ import React, { useState, useEffect, useRef } from "react";
 import VersionGraph from "./VersionGraph";
 
 export default function EditPermutationUI() {
-  // 1️⃣ Allow user to type in any initial draft
+  // 1️⃣ User-provided initial draft
   const [defaultDraft, setDefaultDraft] = useState("");
   const [drafts, setDrafts] = useState([]);
   const [selectedDraft, setSelectedDraft] = useState("");
-  // (existing state)
-  const [editText, setEditText] = useState("");
-  const [editType, setEditType] = useState("add");
+
+  // 2️⃣ Free-style edit buffer
+  const [currentEditText, setCurrentEditText] = useState("");
+
+  // 3️⃣ Conditions & highlights
   const [conditionParts, setConditionParts] = useState([]);
   const [highlighted, setHighlighted] = useState([]);
+
+  // 4️⃣ History / redo for undo-redo
   const [history, setHistory] = useState([]);
   const [redoStack, setRedoStack] = useState([]);
+
+  // 5️⃣ Version graph edges
   const [graphEdges, setGraphEdges] = useState([]);
   const draftBoxRef = useRef();
 
-  // Ctrl+Z / Ctrl+Y handlers
+  // --- Undo / Redo via Ctrl+Z, Ctrl+Y ---
   useEffect(() => {
     const handleKey = (e) => {
       if (e.ctrlKey && e.key === "z") undo();
@@ -24,15 +30,15 @@ export default function EditPermutationUI() {
     };
     window.addEventListener("keydown", handleKey);
     return () => window.removeEventListener("keydown", handleKey);
-  }, [history, redoStack]);
+  }, [history, redoStack, drafts]);
 
-  // History management
   function saveHistory(newDrafts, newEdges) {
     setHistory((h) => [...h, drafts]);
     setRedoStack([]);
     setDrafts(newDrafts);
     setGraphEdges((g) => [...g, ...newEdges]);
   }
+
   function undo() {
     if (!history.length) return;
     const prev = history[history.length - 1];
@@ -48,57 +54,104 @@ export default function EditPermutationUI() {
     setDrafts(next);
   }
 
-  // Initialize with user’s defaultDraft
+  // --- Initialize drafts ---
   function initializeDraft() {
     if (!defaultDraft.trim()) return;
     setDrafts([defaultDraft]);
     setSelectedDraft(defaultDraft);
+    setCurrentEditText(defaultDraft);
     setGraphEdges([{ from: null, to: defaultDraft }]);
     setHistory([]);
     setRedoStack([]);
   }
 
-  // Core edit-permutation logic
+  // --- Free-style edit application ---
   function applyEdit() {
-    const newDrafts = new Set(drafts);
+    const oldText = selectedDraft;
+    const newText = currentEditText;
+    // Compute longest common prefix length
+    let prefixLen = 0;
+    const maxPrefix = Math.min(oldText.length, newText.length);
+    while (prefixLen < maxPrefix && oldText[prefixLen] === newText[prefixLen]) {
+      prefixLen++;
+    }
+    // Compute longest common suffix length
+    let suffixLen = 0;
+    while (
+      suffixLen < oldText.length - prefixLen &&
+      suffixLen < newText.length - prefixLen &&
+      oldText[oldText.length - 1 - suffixLen] === newText[newText.length - 1 - suffixLen]
+    ) {
+      suffixLen++;
+    }
+    const removedLen = oldText.length - prefixLen - suffixLen;
+    const insertedText = newText.slice(prefixLen, newText.length - suffixLen);
+    const removedText = oldText.slice(prefixLen, oldText.length - suffixLen);
+    const prefix = oldText.slice(0, prefixLen);
+
+    // Build suggestion object
+    const suggestion = {
+      prefix,
+      removedLen,
+      removedText,
+      insertedText,
+      conditionParts,
+    };
+
+    // Apply this suggestion to every draft
+    const newSet = new Set(drafts);
     const edges = [];
     drafts.forEach((d) => {
-      const ok =
-        !conditionParts.length ||
-        conditionParts.every((p) => d.includes(p));
-      if (!ok) return;
-      let result = editType === "add" ? d + editText : d.replace(editText, "");
-      if (editType === "remove" && !d.includes(editText)) return;
-      if (!newDrafts.has(result)) {
-        newDrafts.add(result);
-        edges.push({ from: d, to: result });
+      // check user-set conditions
+      if (
+        suggestion.conditionParts.length > 0 &&
+        !suggestion.conditionParts.every((p) => d.includes(p))
+      ) {
+        return;
+      }
+      // find prefix position
+      const pos = d.indexOf(suggestion.prefix);
+      if (pos === -1) return;
+      const start = pos + suggestion.prefix.length;
+      // ensure removal matches
+      if (
+        suggestion.removedLen > 0 &&
+        d.substr(start, suggestion.removedLen) !== suggestion.removedText
+      ) {
+        return;
+      }
+      // construct new draft
+      const newDraft =
+        d.slice(0, start) + suggestion.insertedText + d.slice(start + suggestion.removedLen);
+      if (newDraft !== d && !newSet.has(newDraft)) {
+        newSet.add(newDraft);
+        edges.push({ from: d, to: newDraft });
       }
     });
-    saveHistory([...newDrafts], edges);
-    setEditText("");
+
+    // Save history and clear edit UI
+    saveHistory(Array.from(newSet), edges);
     setConditionParts([]);
     setHighlighted([]);
+    // reset edit buffer to selectedDraft
+    setCurrentEditText(selectedDraft);
   }
 
-  // Text selection for conditions (Ctrl+drag)
+  // --- Text selection for conditions (Ctrl+drag) ---
   function handleSelect() {
     const sel = window.getSelection();
     if (!sel || !sel.toString()) return;
     const txt = sel.toString();
     setConditionParts((prev) =>
-      (window.event.ctrlKey || window.event.metaKey)
-        ? [...prev, txt]
-        : [txt]
+      (window.event.ctrlKey || window.event.metaKey) ? [...prev, txt] : [txt]
     );
     setHighlighted((prev) =>
-      (window.event.ctrlKey || window.event.metaKey)
-        ? [...prev, txt]
-        : [txt]
+      (window.event.ctrlKey || window.event.metaKey) ? [...prev, txt] : [txt]
     );
     sel.removeAllRanges();
   }
 
-  // Highlight marked fragments
+  // --- Highlight rendering ---
   function renderWithHighlights(text) {
     if (!highlighted.length) return text;
     let segments = [text];
@@ -120,7 +173,7 @@ export default function EditPermutationUI() {
     <div className="p-4 space-y-6 text-gray-800">
       <h1 className="text-2xl font-bold">Edit Permutation UI</h1>
 
-      {/* STEP 1: Let user set initial draft */}
+      {/* STEP 1: Set initial draft */}
       <div className="space-y-2">
         <label className="block font-medium">Initial Draft:</label>
         <div className="flex gap-2">
@@ -139,7 +192,6 @@ export default function EditPermutationUI() {
         </div>
       </div>
 
-      {/* Only show the rest once a draft is initialized */}
       {drafts.length > 0 && (
         <>
           {/* Draft list */}
@@ -151,6 +203,7 @@ export default function EditPermutationUI() {
                   key={i}
                   onClick={() => {
                     setSelectedDraft(d);
+                    setCurrentEditText(d);
                     setHighlighted([]);
                     setConditionParts([]);
                   }}
@@ -164,54 +217,48 @@ export default function EditPermutationUI() {
             </ul>
           </div>
 
-          {/* Edit panel */}
+          {/* Free-style edit area */}
           <div>
-            <h2 className="font-semibold">Selected Draft:</h2>
-            <div
+            <h2 className="font-semibold">Selected Draft (edit freely):</h2>
+            <textarea
               ref={draftBoxRef}
               onMouseUp={handleSelect}
-              className="p-2 border rounded bg-white whitespace-pre-wrap min-h-[60px] cursor-text"
-            >
-              {renderWithHighlights(selectedDraft)}
-            </div>
-          </div>
-          <div className="space-y-2">
-            <select
-              className="border p-2 rounded"
-              value={editType}
-              onChange={(e) => setEditType(e.target.value)}
-            >
-              <option value="add">Add Text</option>
-              <option value="remove">Remove Text</option>
-            </select>
-            <input
-              className="border p-2 rounded w-full"
-              placeholder={editType === "add" ? "Text to add" : "Text to remove"}
-              value={editText}
-              onChange={(e) => setEditText(e.target.value)}
+              className="w-full p-2 border rounded bg-white whitespace-pre-wrap min-h-[80px]"
+              value={currentEditText}
+              onChange={(e) => setCurrentEditText(e.target.value)}
             />
             <div className="text-sm text-gray-600">
               Conditions: {conditionParts.length ? conditionParts.join(", ") : "(none)"}
             </div>
-            <button
-              className="bg-blue-600 text-white px-4 py-2 rounded"
-              onClick={applyEdit}
-              disabled={!editText}
-            >
-              Submit Edit
-            </button>
-            <button className="ml-2 px-4 py-2 bg-gray-200 rounded" onClick={undo}>
-              Undo (Ctrl+Z)
-            </button>
-            <button className="ml-2 px-4 py-2 bg-gray-200 rounded" onClick={redo}>
-              Redo (Ctrl+Y)
-            </button>
+            <div className="space-x-2 mt-2">
+              <button
+                className="bg-blue-600 text-white px-4 py-2 rounded"
+                onClick={applyEdit}
+              >
+                Submit Edit
+              </button>
+              <button
+                className="bg-gray-200 px-4 py-2 rounded"
+                onClick={undo}
+              >
+                Undo (Ctrl+Z)
+              </button>
+              <button
+                className="bg-gray-200 px-4 py-2 rounded"
+                onClick={redo}
+              >
+                Redo (Ctrl+Y)
+              </button>
+            </div>
           </div>
 
-          {/* Visual version graph */}
+          {/* Version graph */}
           <div>
             <h2 className="font-semibold mt-6">Version Graph:</h2>
-            <VersionGraph edges={graphEdges} onSelectDraft={setSelectedDraft} />
+            <VersionGraph
+              edges={graphEdges}
+              onSelectDraft={setSelectedDraft}
+            />
           </div>
         </>
       )}
