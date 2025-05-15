@@ -65,6 +65,17 @@ export default function EditPermutationUI() {
     setRedoStack([]);
   }
 
+  // Helper: find all indices of `sub` in `str`
+  function findAllIndices(str, sub) {
+    const indices = [];
+    let i = str.indexOf(sub);
+    while (i !== -1) {
+      indices.push(i);
+      i = str.indexOf(sub, i + 1);
+    }
+    return indices;
+  }
+
   // --- Free-style edit application ---
   function applyEdit() {
     const oldText = selectedDraft;
@@ -90,11 +101,20 @@ export default function EditPermutationUI() {
     const removedText = oldText.slice(prefixLen, oldText.length - suffixLen);
     const offset = prefixLen;
 
+    // Determine which occurrence of removedText was edited in the selected draft
+    let occurrenceIndex = 0;
+    if (removedLen > 0) {
+      const before = oldText.slice(0, offset);
+      const beforeOccs = findAllIndices(before, removedText);
+      occurrenceIndex = beforeOccs.length;
+    }
+
     const suggestion = {
       offset,
       removedLen,
       removedText,
       insertedText,
+      occurrenceIndex,
       conditionParts,
     };
 
@@ -111,21 +131,20 @@ export default function EditPermutationUI() {
       }
 
       let newDraft = d;
-      const { offset, removedLen, removedText, insertedText } = suggestion;
 
       // Replacement or removal
-      if (removedLen > 0) {
-        // apply only if the segment matches at the same offset
-        if (offset + removedLen > d.length) return;
-        if (d.substr(offset, removedLen) !== removedText) return;
+      if (suggestion.removedLen > 0) {
+        const idxList = findAllIndices(d, suggestion.removedText);
+        if (idxList.length <= suggestion.occurrenceIndex) return;
+        const pos = idxList[suggestion.occurrenceIndex];
         newDraft =
-          d.slice(0, offset) + insertedText + d.slice(offset + removedLen);
+          d.slice(0, pos) + suggestion.insertedText + d.slice(pos + suggestion.removedLen);
       }
       // Pure insertion
-      else if (insertedText.length > 0) {
-        const insertAt = Math.min(offset, d.length);
+      else if (suggestion.insertedText.length > 0) {
+        const insertAt = Math.min(suggestion.offset, d.length);
         newDraft =
-          d.slice(0, insertAt) + insertedText + d.slice(insertAt);
+          d.slice(0, insertAt) + suggestion.insertedText + d.slice(insertAt);
       }
 
       if (newDraft !== d && !newSet.has(newDraft)) {
@@ -267,5 +286,6 @@ export default function EditPermutationUI() {
     </div>
   );
 }
+
 
 
