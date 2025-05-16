@@ -2,290 +2,208 @@ import React, { useState, useEffect, useRef } from "react";
 import VersionGraph from "./VersionGraph";
 
 export default function EditPermutationUI() {
-  // 1️⃣ User-provided initial draft
+  // 1️⃣ User-provided initial draft (raw strings may include invisible markers)
   const [defaultDraft, setDefaultDraft] = useState("");
-  const [drafts, setDrafts] = useState([]);
-  const [selectedDraft, setSelectedDraft] = useState("");
+  const [draftsRaw, setDraftsRaw] = useState([]);
+  const [selectedRaw, setSelectedRaw] = useState("");
 
-  // 2️⃣ Free-style edit buffer
+  // 2️⃣ Free-style edit buffer (display without markers)
   const [currentEditText, setCurrentEditText] = useState("");
 
-  // 3️⃣ Conditions & highlights
-  const [conditionParts, setConditionParts] = useState([]);
-  const [highlighted, setHighlighted] = useState([]);
+  // 3️⃣ Conditions: store marker IDs
+  const [conditionIds, setConditionIds] = useState([]);
 
-  // 4️⃣ History / redo for undo-redo
+  // 4️⃣ History / redo
   const [history, setHistory] = useState([]);
   const [redoStack, setRedoStack] = useState([]);
 
   // 5️⃣ Version graph edges
   const [graphEdges, setGraphEdges] = useState([]);
-  const draftBoxRef = useRef();
 
-  // --- Undo / Redo via Ctrl+Z, Ctrl+Y ---
+  const markerStart = id => `[M${id}]`;
+  const markerEnd = id => `[\/M${id}]`;
+  const stripMarkers = str => str.replace(/\[M\d+\]|\[\/M\d+\]/g, '');
+
+  // Undo / Redo
   useEffect(() => {
-    const handleKey = (e) => {
-      if (e.ctrlKey && e.key === "z") undo();
-      if (e.ctrlKey && e.key === "y") redo();
+    const h = e => {
+      if (e.ctrlKey && e.key === 'z') undo();
+      if (e.ctrlKey && e.key === 'y') redo();
     };
-    window.addEventListener("keydown", handleKey);
-    return () => window.removeEventListener("keydown", handleKey);
-  }, [history, redoStack, drafts]);
+    window.addEventListener('keydown', h);
+    return () => window.removeEventListener('keydown', h);
+  }, [history, redoStack, draftsRaw]);
 
-  function saveHistory(newDrafts, newEdges) {
-    setHistory((h) => [...h, drafts]);
+  function saveHistory(newRawList, newEdges) {
+    setHistory(h => [...h, draftsRaw]);
     setRedoStack([]);
-    setDrafts(newDrafts);
-    setGraphEdges((g) => [...g, ...newEdges]);
+    setDraftsRaw(newRawList);
+    setGraphEdges(g => [...g, ...newEdges]);
   }
-
   function undo() {
     if (!history.length) return;
     const prev = history[history.length - 1];
-    setRedoStack((r) => [drafts, ...r]);
-    setHistory((h) => h.slice(0, -1));
-    setDrafts(prev);
+    setRedoStack(r => [draftsRaw, ...r]);
+    setHistory(h => h.slice(0, -1));
+    setDraftsRaw(prev);
   }
   function redo() {
     if (!redoStack.length) return;
     const next = redoStack[0];
-    setHistory((h) => [...h, drafts]);
-    setRedoStack((r) => r.slice(1));
-    setDrafts(next);
+    setHistory(h => [...h, draftsRaw]);
+    setRedoStack(r => r.slice(1));
+    setDraftsRaw(next);
   }
 
-  // --- Initialize drafts ---
+  // Initialize
   function initializeDraft() {
     if (!defaultDraft.trim()) return;
-    setDrafts([defaultDraft]);
-    setSelectedDraft(defaultDraft);
+    setDraftsRaw([defaultDraft]);
+    setSelectedRaw(defaultDraft);
     setCurrentEditText(defaultDraft);
     setGraphEdges([{ from: null, to: defaultDraft }]);
     setHistory([]);
     setRedoStack([]);
   }
 
-  // Helper: find all indices of `sub` in `str`
-  function findAllIndices(str, sub) {
-    const indices = [];
-    let i = str.indexOf(sub);
-    while (i !== -1) {
-      indices.push(i);
-      i = str.indexOf(sub, i + 1);
-    }
-    return indices;
+  // Utility: find raw index for display position
+  // Since raw and display align before adding markers, and new branches strip markers
+  // for editing, we can use display positions directly
+
+  // Handle condition selection (wrap invisible markers in raw)
+  function handleSelect(e) {
+    const ta = e.target;
+    const { selectionStart, selectionEnd } = ta;
+    if (selectionStart === selectionEnd) return;
+    const frag = currentEditText.slice(selectionStart, selectionEnd);
+    const id = Date.now();
+    // wrap in markers in raw string
+    const before = selectedRaw.slice(0, selectionStart);
+    const after = selectedRaw.slice(selectionEnd);
+    const newRaw = before
+      + markerStart(id) + frag + markerEnd(id)
+      + after;
+    // update drafts and selection
+    const updated = draftsRaw.map(r => r === selectedRaw ? newRaw : r);
+    setDraftsRaw(updated);
+    setSelectedRaw(newRaw);
+    setConditionIds(e.ctrlKey ? [...conditionIds, id] : [id]);
+    // keep display unchanged
+    ta.selectionEnd = ta.selectionStart;
   }
 
-  // --- Free-style edit application ---
+  // Apply free-style edit across all drafts
   function applyEdit() {
-    const oldText = selectedDraft;
+    const oldText = stripMarkers(selectedRaw);
     const newText = currentEditText;
-    // Compute longest common prefix length
+    // diff to find prefix/suffix/remove/insert
     let prefixLen = 0;
-    const maxPrefix = Math.min(oldText.length, newText.length);
-    while (prefixLen < maxPrefix && oldText[prefixLen] === newText[prefixLen]) {
-      prefixLen++;
-    }
-    // Compute longest common suffix length
+    const maxP = Math.min(oldText.length, newText.length);
+    while (prefixLen < maxP && oldText[prefixLen] === newText[prefixLen]) prefixLen++;
     let suffixLen = 0;
     while (
       suffixLen < oldText.length - prefixLen &&
       suffixLen < newText.length - prefixLen &&
       oldText[oldText.length - 1 - suffixLen] === newText[newText.length - 1 - suffixLen]
-    ) {
-      suffixLen++;
-    }
+    ) suffixLen++;
 
     const removedLen = oldText.length - prefixLen - suffixLen;
     const insertedText = newText.slice(prefixLen, newText.length - suffixLen);
-    const removedText = oldText.slice(prefixLen, oldText.length - suffixLen);
-    const offset = prefixLen;
 
-    // Determine which occurrence of removedText was edited in the selected draft
-    let occurrenceIndex = 0;
-    if (removedLen > 0) {
-      const before = oldText.slice(0, offset);
-      const beforeOccs = findAllIndices(before, removedText);
-      occurrenceIndex = beforeOccs.length;
-    }
-
-    const suggestion = {
-      offset,
-      removedLen,
-      removedText,
-      insertedText,
-      occurrenceIndex,
-      conditionParts,
-    };
-
-    const newSet = new Set(drafts);
+    const newSet = new Set(draftsRaw);
     const edges = [];
 
-    drafts.forEach((d) => {
-      // check user-set conditions
-      if (
-        suggestion.conditionParts.length > 0 &&
-        !suggestion.conditionParts.every((p) => d.includes(p))
-      ) {
-        return;
+    draftsRaw.forEach(raw => {
+      // check condition markers
+      if (conditionIds.length) {
+        const ok = conditionIds.every(id => raw.includes(markerStart(id)));
+        if (!ok) return;
       }
-
-      let newDraft = d;
-
-      // Replacement or removal
-      if (suggestion.removedLen > 0) {
-        const idxList = findAllIndices(d, suggestion.removedText);
-        if (idxList.length <= suggestion.occurrenceIndex) return;
-        const pos = idxList[suggestion.occurrenceIndex];
-        newDraft =
-          d.slice(0, pos) + suggestion.insertedText + d.slice(pos + suggestion.removedLen);
-      }
-      // Pure insertion
-      else if (suggestion.insertedText.length > 0) {
-        const insertAt = Math.min(suggestion.offset, d.length);
-        newDraft =
-          d.slice(0, insertAt) + suggestion.insertedText + d.slice(insertAt);
-      }
-
-      if (newDraft !== d && !newSet.has(newDraft)) {
-        newSet.add(newDraft);
-        edges.push({ from: d, to: newDraft });
+      // strip markers for edit
+      const base = stripMarkers(raw);
+      // can’t remove if segment absent
+      if (removedLen && base.substr(prefixLen, removedLen) !== base.substr(prefixLen, removedLen)) return;
+      // build new stripped
+      const updated =
+        base.slice(0, prefixLen)
+        + insertedText
+        + base.slice(prefixLen + removedLen);
+      // add to raw-set (no markers)
+      if (!newSet.has(updated)) {
+        newSet.add(updated);
+        edges.push({ from: stripMarkers(raw), to: updated });
       }
     });
 
-    // Save history and reset UI
     saveHistory(Array.from(newSet), edges);
-    setConditionParts([]);
-    setHighlighted([]);
-    setCurrentEditText(selectedDraft);
-  }
-
-  // --- Text selection for conditions (Ctrl+drag) ---
-  function handleSelect() {
-    const sel = window.getSelection();
-    if (!sel || !sel.toString()) return;
-    const txt = sel.toString();
-    setConditionParts((prev) =>
-      (window.event.ctrlKey || window.event.metaKey) ? [...prev, txt] : [txt]
-    );
-    setHighlighted((prev) =>
-      (window.event.ctrlKey || window.event.metaKey) ? [...prev, txt] : [txt]
-    );
-    sel.removeAllRanges();
-  }
-
-  // --- Highlight rendering ---
-  function renderWithHighlights(text) {
-    if (!highlighted.length) return text;
-    let segments = [text];
-    highlighted.forEach((frag) => {
-      segments = segments.flatMap((seg) =>
-        typeof seg === "string" && seg.includes(frag)
-          ? seg.split(frag).flatMap((part, i, arr) =>
-              i < arr.length - 1
-                ? [part, <mark key={`${frag}-${i}`}>{frag}</mark>]
-                : [part]
-            )
-          : [seg]
-      );
-    });
-    return segments;
+    // reset UI
+    setConditionIds([]);
+    setCurrentEditText(stripMarkers(selectedRaw));
   }
 
   return (
     <div className="p-4 space-y-6 text-gray-800">
       <h1 className="text-2xl font-bold">Edit Permutation UI</h1>
 
-      {/* STEP 1: Set initial draft */}
+      {/* Initial Draft */}
       <div className="space-y-2">
         <label className="block font-medium">Initial Draft:</label>
         <textarea
-          className="w-full p-2 border rounded bg-white whitespace-pre-wrap min-h-[80px]"
+          className="w-full p-2 border rounded whitespace-pre-wrap min-h-[80px]"
           value={defaultDraft}
-          onChange={(e) => setDefaultDraft(e.target.value)}
-          placeholder="Type starting text…"
+          onChange={e => setDefaultDraft(e.target.value)}
         />
         <button
           className="bg-green-600 text-white px-4 py-2 rounded"
           onClick={initializeDraft}
-        >
-          Set
-        </button>
+        >Set</button>
       </div>
 
-      {drafts.length > 0 && (
+      {draftsRaw.length > 0 && (
         <>
-          {/* Draft list */}
+          {/* Drafts List */}
           <div>
             <h2 className="font-semibold">All Drafts:</h2>
             <ul className="flex flex-wrap gap-2">
-              {drafts.map((d, i) => (
-                <li
-                  key={i}
-                  onClick={() => {
-                    setSelectedDraft(d);
-                    setCurrentEditText(d);
-                    setHighlighted([]);
-                    setConditionParts([]);
-                  }}
-                  className={`px-2 py-1 rounded cursor-pointer ${
-                    d === selectedDraft ? "bg-blue-200" : "bg-gray-100"
-                  }`}
-                >
-                  {d}
-                </li>
-              ))}
+              {draftsRaw.map((r,i) => {
+                const disp = stripMarkers(r);
+                return (
+                <li key={i}
+                  onClick={() => { setSelectedRaw(r); setCurrentEditText(disp); setConditionIds([]); }}
+                  className={`px-2 py-1 rounded cursor-pointer ${r===selectedRaw?'bg-blue-200':'bg-gray-100'}`}>
+                  {disp}
+                </li>);
+              })}
             </ul>
           </div>
 
-          {/* Free-style edit area */}
+          {/* Free-style Editor */}
           <div>
             <h2 className="font-semibold">Selected Draft (edit freely):</h2>
             <textarea
-              ref={draftBoxRef}
               onMouseUp={handleSelect}
-              className="w-full p-2 border rounded bg-white whitespace-pre-wrap min-h-[80px]"
+              className="w-full p-2 border rounded whitespace-pre-wrap min-h-[80px]"
               value={currentEditText}
-              onChange={(e) => setCurrentEditText(e.target.value)}
+              onChange={e => setCurrentEditText(e.target.value)}
             />
-            <div className="text-sm text-gray-600">
-              Conditions: {conditionParts.length ? conditionParts.join(", ") : "(none)"}
-            </div>
             <div className="space-x-2 mt-2">
-              <button
-                className="bg-blue-600 text-white px-4 py-2 rounded"
-                onClick={applyEdit}
-              >
-                Submit Edit
-              </button>
-              <button
-                className="bg-gray-200 px-4 py-2 rounded"
-                onClick={undo}
-              >
-                Undo (Ctrl+Z)
-              </button>
-              <button
-                className="bg-gray-200 px-4 py-2 rounded"
-                onClick={redo}
-              >
-                Redo (Ctrl+Y)
-              </button>
+              <button className="bg-blue-600 text-white px-4 py-2 rounded" onClick={applyEdit}>Submit Edit</button>
+              <button className="bg-gray-200 px-4 py-2 rounded" onClick={undo}>Undo (Ctrl+Z)</button>
+              <button className="bg-gray-200 px-4 py-2 rounded" onClick={redo}>Redo (Ctrl+Y)</button>
             </div>
           </div>
 
-          {/* Version graph */}
+          {/* Version Graph */}
           <div>
             <h2 className="font-semibold mt-6">Version Graph:</h2>
-            <VersionGraph
-              edges={graphEdges}
-              onSelectDraft={setSelectedDraft}
-            />
+            <VersionGraph edges={graphEdges} onSelectDraft={raw => {setSelectedRaw(raw); setCurrentEditText(stripMarkers(raw));}} />
           </div>
         </>
       )}
     </div>
   );
 }
+
 
 
 
