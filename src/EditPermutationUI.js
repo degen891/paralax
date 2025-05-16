@@ -1,9 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
 import VersionGraph from "./VersionGraph";
 
-// Number of characters to capture around each condition fragment
-const CONTEXT_CHARS = 5;
-
 export default function EditPermutationUI() {
   // 1️⃣ User-provided initial draft
   const [defaultDraft, setDefaultDraft] = useState("");
@@ -13,11 +10,11 @@ export default function EditPermutationUI() {
   // 2️⃣ Free-style edit buffer
   const [currentEditText, setCurrentEditText] = useState("");
 
-  // 3️⃣ Conditions now store { text, prefixCtx, suffixCtx }
+  // 3️⃣ Conditions & highlights
   const [conditionParts, setConditionParts] = useState([]);
   const [highlighted, setHighlighted] = useState([]);
 
-  // 4️⃣ History / redo
+  // 4️⃣ History / redo for undo-redo
   const [history, setHistory] = useState([]);
   const [redoStack, setRedoStack] = useState([]);
 
@@ -25,7 +22,7 @@ export default function EditPermutationUI() {
   const [graphEdges, setGraphEdges] = useState([]);
   const draftBoxRef = useRef();
 
-  // — Undo/Redo listeners —
+  // --- Undo / Redo via Ctrl+Z, Ctrl+Y ---
   useEffect(() => {
     const handleKey = (e) => {
       if (e.ctrlKey && e.key === "z") undo();
@@ -56,7 +53,7 @@ export default function EditPermutationUI() {
     setDrafts(next);
   }
 
-  // — Initialize drafts —
+  // --- Initialize drafts ---
   function initializeDraft() {
     if (!defaultDraft.trim()) return;
     setDrafts([defaultDraft]);
@@ -67,7 +64,7 @@ export default function EditPermutationUI() {
     setRedoStack([]);
   }
 
-  // — Helper: all indices of sub in str —
+  // Helper: find all indices of `sub` in `str`
   function findAllIndices(str, sub) {
     const indices = [];
     let i = str.indexOf(sub);
@@ -78,18 +75,18 @@ export default function EditPermutationUI() {
     return indices;
   }
 
-  // — Build context-based condition objects for auto-conditions —
+  // --- Paragraph & sentence extraction for auto-conditions ---
   function getAutoConditions(text, offset, removedLen) {
-    // 1) find paragraph
+    // Paragraph boundaries by \n
     const beforePara = text.lastIndexOf("\n", offset - 1);
     const afterPara = text.indexOf("\n", offset + removedLen);
     const paraStart = beforePara + 1;
     const paraEnd = afterPara === -1 ? text.length : afterPara;
     const paragraph = text.slice(paraStart, paraEnd);
 
-    // 2) split into sentences
+    // Split paragraph into sentences by .,;:
     const sentenceRegex = /[^.;:]+[.;:]/g;
-    let sentences = [], match;
+    let match, sentences = [];
     while ((match = sentenceRegex.exec(paragraph)) !== null) {
       sentences.push({
         text: match[0],
@@ -98,43 +95,26 @@ export default function EditPermutationUI() {
       });
     }
 
-    // 3) if overlap with a sentence, condition on that sentence
+    // Check if edit overlaps any sentence
     const editStart = offset;
     const editEnd = offset + removedLen;
     for (let s of sentences) {
       if (!(editEnd <= s.start || editStart >= s.end)) {
-        // build context object
-        const prefixStart = Math.max(0, s.start - CONTEXT_CHARS);
-        const prefixCtx = text.slice(prefixStart, s.start);
-        const suffixEnd = Math.min(text.length, s.end + CONTEXT_CHARS);
-        const suffixCtx = text.slice(s.end, suffixEnd);
-        return [{
-          text: s.text.trim(),
-          prefixCtx,
-          suffixCtx
-        }];
+        // overlap → auto-condition on this sentence
+        return [s.text.trim()];
       }
     }
 
-    // 4) otherwise condition on entire paragraph
-    const trimmed = paragraph.trim();
-    const prefixStart = Math.max(0, paraStart - CONTEXT_CHARS);
-    const prefixCtx = text.slice(prefixStart, paraStart);
-    const suffixEnd = Math.min(text.length, paraEnd + CONTEXT_CHARS);
-    const suffixCtx = text.slice(paraEnd, suffixEnd);
-    return [{
-      text: trimmed,
-      prefixCtx,
-      suffixCtx
-    }];
+    // No overlapping sentence → condition on paragraph
+    return [paragraph.trim()];
   }
 
-  // — Apply the user’s free-style edit across all drafts —
+  // --- Free-style edit application with auto-conditions ---
   function applyEdit() {
     const oldText = selectedDraft;
     const newText = currentEditText;
 
-    // 1) diff by LCP/LCS
+    // 1) compute diff by Longest Common Prefix/Suffix
     let prefixLen = 0;
     const maxPrefix = Math.min(oldText.length, newText.length);
     while (
@@ -155,14 +135,17 @@ export default function EditPermutationUI() {
     const removedText = oldText.slice(prefixLen, oldText.length - suffixLen);
     const offset = prefixLen;
 
-    // 2) occurrenceIndex for removals
+    // 2) determine occurrenceIndex for removals
     let occurrenceIndex = 0;
     if (removedLen > 0) {
       const before = oldText.slice(0, offset);
       occurrenceIndex = findAllIndices(before, removedText).length;
     }
 
-    // 3) AUTOMATIC CONDITIONS (as before):
+    // 3) AUTOMATIC CONDITIONS
+    //   • Any removal is a modification → auto-cond
+    //   • Any insertion that's NOT a full new sentence or paragraph → auto-cond
+    //   • Pure sentence (ending . ; :) or paragraph (contains \n) additions → no auto-cond
     const ins = insertedText;
     const trimmedIns = ins.trim();
     const isSentenceAddition = /^[^.;:]+[.;:]\s*$/.test(trimmedIns);
@@ -176,31 +159,33 @@ export default function EditPermutationUI() {
       autoConds = getAutoConditions(oldText, offset, removedLen);
     }
 
-    // 4) build suggestion with merged context-objects
+    // 4) build suggestion object
     const suggestion = {
       offset,
       removedLen,
       removedText,
       insertedText,
       occurrenceIndex,
-      conditionParts: [
-        ...autoConds,
-        ...conditionParts  // these are already {text, prefixCtx, suffixCtx}
-      ],
+      // merge auto-conds first, then user-set ones
+      conditionParts: [...autoConds, ...conditionParts],
     };
 
-    // 5) apply to every draft
+    // 5) apply across all drafts
     const newSet = new Set(drafts);
     const edges = [];
 
     drafts.forEach((d) => {
-      // check **context-based** conditions
-      for (let c of suggestion.conditionParts) {
-        const pattern = c.prefixCtx + c.text + c.suffixCtx;
-        if (d.indexOf(pattern) === -1) return;
+      // check all conditions
+      if (
+        suggestion.conditionParts.length > 0 &&
+        !suggestion.conditionParts.every((p) => d.includes(p))
+      ) {
+        return;
       }
 
       let newDraft = d;
+
+      // removal/replacement
       if (suggestion.removedLen > 0) {
         const idxList = findAllIndices(d, suggestion.removedText);
         if (idxList.length <= suggestion.occurrenceIndex) return;
@@ -209,7 +194,9 @@ export default function EditPermutationUI() {
           d.slice(0, pos) +
           suggestion.insertedText +
           d.slice(pos + suggestion.removedLen);
-      } else if (suggestion.insertedText.length > 0) {
+      }
+      // insertion only
+      else if (suggestion.insertedText.length > 0) {
         const insertAt = Math.min(suggestion.offset, d.length);
         newDraft =
           d.slice(0, insertAt) +
@@ -230,32 +217,25 @@ export default function EditPermutationUI() {
     setCurrentEditText(selectedDraft);
   }
 
-  // — Capture manual conditions with context on mouse-up —
-  function handleSelect(e) {
-    const ta = e.currentTarget;
-    const start = ta.selectionStart;
-    const end = ta.selectionEnd;
-    if (start === end) return;
-    const txt = ta.value.slice(start, end);
-    const prefixStart = Math.max(0, start - CONTEXT_CHARS);
-    const prefixCtx = ta.value.slice(prefixStart, start);
-    const suffixEnd = Math.min(ta.value.length, end + CONTEXT_CHARS);
-    const suffixCtx = ta.value.slice(end, suffixEnd);
-
-    const newCond = { text: txt, prefixCtx, suffixCtx };
-    const add = e.ctrlKey || e.metaKey;
+  // --- Text selection for manual conditions (Ctrl+drag) ---
+  function handleSelect() {
+    const sel = window.getSelection();
+    if (!sel || !sel.toString()) return;
+    const txt = sel.toString();
     setConditionParts((prev) =>
-      add ? [...prev, newCond] : [newCond]
+      (window.event.ctrlKey || window.event.metaKey)
+        ? [...prev, txt]
+        : [txt]
     );
     setHighlighted((prev) =>
-      add ? [...prev, txt] : [txt]
+      (window.event.ctrlKey || window.event.metaKey)
+        ? [...prev, txt]
+        : [txt]
     );
-
-    // collapse selection
-    ta.setSelectionRange(end, end);
+    sel.removeAllRanges();
   }
 
-  // — Highlight UI for manual fragments (unchanged) —
+  // --- Highlight rendering ---
   function renderWithHighlights(text) {
     if (!highlighted.length) return text;
     let segments = [text];
@@ -277,7 +257,7 @@ export default function EditPermutationUI() {
     <div className="p-4 space-y-6 text-gray-800">
       <h1 className="text-2xl font-bold">Edit Permutation UI</h1>
 
-      {/* Initial Draft */}
+      {/* STEP 1: Set initial draft */}
       <div className="space-y-2">
         <label className="block font-medium">Initial Draft:</label>
         <textarea
@@ -332,7 +312,7 @@ export default function EditPermutationUI() {
             <div className="text-sm text-gray-600">
               Conditions:{" "}
               {conditionParts.length
-                ? conditionParts.map((c) => c.text).join(", ")
+                ? conditionParts.join(", ")
                 : "(none)"}
             </div>
             <div className="space-x-2 mt-2">
@@ -342,10 +322,16 @@ export default function EditPermutationUI() {
               >
                 Submit Edit
               </button>
-              <button className="bg-gray-200 px-4 py-2 rounded" onClick={undo}>
+              <button
+                className="bg-gray-200 px-4 py-2 rounded"
+                onClick={undo}
+              >
                 Undo (Ctrl+Z)
               </button>
-              <button className="bg-gray-200 px-4 py-2 rounded" onClick={redo}>
+              <button
+                className="bg-gray-200 px-4 py-2 rounded"
+                onClick={redo}
+              >
                 Redo (Ctrl+Y)
               </button>
             </div>
