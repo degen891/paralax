@@ -33,24 +33,23 @@ export default function EditPermutationUI() {
   }, [history, redoStack, drafts]);
 
   function saveHistory(newDrafts, newEdges) {
-    setHistory((h) => [...h, drafts]);
+    setHistory(h => [...h, drafts]);
     setRedoStack([]);
     setDrafts(newDrafts);
-    setGraphEdges((g) => [...g, ...newEdges]);
+    setGraphEdges(g => [...g, ...newEdges]);
   }
-
   function undo() {
     if (!history.length) return;
     const prev = history[history.length - 1];
-    setRedoStack((r) => [drafts, ...r]);
-    setHistory((h) => h.slice(0, -1));
+    setRedoStack(r => [drafts, ...r]);
+    setHistory(h => h.slice(0, -1));
     setDrafts(prev);
   }
   function redo() {
     if (!redoStack.length) return;
     const next = redoStack[0];
-    setHistory((h) => [...h, drafts]);
-    setRedoStack((r) => r.slice(1));
+    setHistory(h => [...h, drafts]);
+    setRedoStack(r => r.slice(1));
     setDrafts(next);
   }
 
@@ -76,37 +75,78 @@ export default function EditPermutationUI() {
     return indices;
   }
 
-  // --- Free-style edit application ---
+  // --- New: paragraph & sentence extraction ---
+  function getAutoConditions(text, offset, removedLen) {
+    // 1) Identify paragraph boundaries
+    const beforePara = text.lastIndexOf("\n", offset - 1);
+    const afterPara  = text.indexOf("\n", offset + removedLen);
+    const paraStart = beforePara + 1;
+    const paraEnd   = afterPara === -1 ? text.length : afterPara;
+    const paragraph = text.slice(paraStart, paraEnd);
+
+    // 2) Split into sentences by .,;:
+    const sentenceRegex = /[^.;:]+[.;:]/g;
+    let match, sentences = [];
+    while ((match = sentenceRegex.exec(paragraph)) !== null) {
+      sentences.push({
+        text: match[0],
+        start: paraStart + match.index,
+        end: paraStart + match.index + match[0].length
+      });
+    }
+
+    // 3) Determine if this edit overlaps a sentence
+    const editStart = offset;
+    const editEnd   = offset + removedLen;
+    for (let s of sentences) {
+      if (!(editEnd <= s.start || editStart >= s.end)) {
+        // overlap ⇒ auto-condition on this sentence
+        return [s.text.trim()];
+      }
+    }
+
+    // 4) No sentences in this paragraph or no overlap ⇒ auto-condition on paragraph
+    return [paragraph.trim()];
+  }
+
+  // --- Free-style edit application with auto-conditions ---
   function applyEdit() {
     const oldText = selectedDraft;
     const newText = currentEditText;
-    // Compute longest common prefix length
+
+    // 1) compute diff by LCP / LCS
     let prefixLen = 0;
     const maxPrefix = Math.min(oldText.length, newText.length);
-    while (prefixLen < maxPrefix && oldText[prefixLen] === newText[prefixLen]) {
-      prefixLen++;
-    }
-    // Compute longest common suffix length
+    while (
+      prefixLen < maxPrefix &&
+      oldText[prefixLen] === newText[prefixLen]
+    ) prefixLen++;
+
     let suffixLen = 0;
     while (
       suffixLen < oldText.length - prefixLen &&
       suffixLen < newText.length - prefixLen &&
-      oldText[oldText.length - 1 - suffixLen] === newText[newText.length - 1 - suffixLen]
-    ) {
-      suffixLen++;
-    }
+      oldText[oldText.length - 1 - suffixLen] ===
+        newText[newText.length - 1 - suffixLen]
+    ) suffixLen++;
 
-    const removedLen = oldText.length - prefixLen - suffixLen;
+    const removedLen   = oldText.length - prefixLen - suffixLen;
     const insertedText = newText.slice(prefixLen, newText.length - suffixLen);
-    const removedText = oldText.slice(prefixLen, oldText.length - suffixLen);
-    const offset = prefixLen;
+    const removedText  = oldText.slice(prefixLen, oldText.length - suffixLen);
+    const offset       = prefixLen;
 
-    // Determine which occurrence of removedText was edited in the selected draft
+    // 2) determine occurrenceIndex for removals
     let occurrenceIndex = 0;
     if (removedLen > 0) {
       const before = oldText.slice(0, offset);
-      const beforeOccs = findAllIndices(before, removedText);
-      occurrenceIndex = beforeOccs.length;
+      occurrenceIndex = findAllIndices(before, removedText).length;
+    }
+
+    // 3) AUTOMATIC CONDITIONS for modifying an existing sentence/paragraph
+    const isAddition = removedLen === 0;
+    let autoConds = [];
+    if (!isAddition) {
+      autoConds = getAutoConditions(oldText, offset, removedLen);
     }
 
     const suggestion = {
@@ -115,14 +155,16 @@ export default function EditPermutationUI() {
       removedText,
       insertedText,
       occurrenceIndex,
-      conditionParts,
+      // merge auto-conds first, then any user-set ones
+      conditionParts: [...autoConds, ...conditionParts],
     };
 
+    // 4) apply across all drafts
     const newSet = new Set(drafts);
     const edges = [];
 
     drafts.forEach((d) => {
-      // check user-set conditions
+      // check merged conditions
       if (
         suggestion.conditionParts.length > 0 &&
         !suggestion.conditionParts.every((p) => d.includes(p))
@@ -132,19 +174,23 @@ export default function EditPermutationUI() {
 
       let newDraft = d;
 
-      // Replacement or removal
+      // replacement/removal
       if (suggestion.removedLen > 0) {
         const idxList = findAllIndices(d, suggestion.removedText);
         if (idxList.length <= suggestion.occurrenceIndex) return;
         const pos = idxList[suggestion.occurrenceIndex];
         newDraft =
-          d.slice(0, pos) + suggestion.insertedText + d.slice(pos + suggestion.removedLen);
+          d.slice(0, pos) +
+          suggestion.insertedText +
+          d.slice(pos + suggestion.removedLen);
       }
-      // Pure insertion
+      // pure insertion
       else if (suggestion.insertedText.length > 0) {
         const insertAt = Math.min(suggestion.offset, d.length);
         newDraft =
-          d.slice(0, insertAt) + suggestion.insertedText + d.slice(insertAt);
+          d.slice(0, insertAt) +
+          suggestion.insertedText +
+          d.slice(insertAt);
       }
 
       if (newDraft !== d && !newSet.has(newDraft)) {
@@ -153,23 +199,27 @@ export default function EditPermutationUI() {
       }
     });
 
-    // Save history and reset UI
+    // 5) save & reset
     saveHistory(Array.from(newSet), edges);
     setConditionParts([]);
     setHighlighted([]);
     setCurrentEditText(selectedDraft);
   }
 
-  // --- Text selection for conditions (Ctrl+drag) ---
+  // --- Text selection for manual conditions (Ctrl+drag) ---
   function handleSelect() {
     const sel = window.getSelection();
     if (!sel || !sel.toString()) return;
     const txt = sel.toString();
-    setConditionParts((prev) =>
-      (window.event.ctrlKey || window.event.metaKey) ? [...prev, txt] : [txt]
+    setConditionParts(prev =>
+      (window.event.ctrlKey || window.event.metaKey)
+        ? [...prev, txt]
+        : [txt]
     );
-    setHighlighted((prev) =>
-      (window.event.ctrlKey || window.event.metaKey) ? [...prev, txt] : [txt]
+    setHighlighted(prev =>
+      (window.event.ctrlKey || window.event.metaKey)
+        ? [...prev, txt]
+        : [txt]
     );
     sel.removeAllRanges();
   }
@@ -178,8 +228,8 @@ export default function EditPermutationUI() {
   function renderWithHighlights(text) {
     if (!highlighted.length) return text;
     let segments = [text];
-    highlighted.forEach((frag) => {
-      segments = segments.flatMap((seg) =>
+    highlighted.forEach(frag => {
+      segments = segments.flatMap(seg =>
         typeof seg === "string" && seg.includes(frag)
           ? seg.split(frag).flatMap((part, i, arr) =>
               i < arr.length - 1
@@ -202,7 +252,7 @@ export default function EditPermutationUI() {
         <textarea
           className="w-full p-2 border rounded bg-white whitespace-pre-wrap min-h-[80px]"
           value={defaultDraft}
-          onChange={(e) => setDefaultDraft(e.target.value)}
+          onChange={e => setDefaultDraft(e.target.value)}
           placeholder="Type starting text…"
         />
         <button
@@ -246,7 +296,7 @@ export default function EditPermutationUI() {
               onMouseUp={handleSelect}
               className="w-full p-2 border rounded bg-white whitespace-pre-wrap min-h-[80px]"
               value={currentEditText}
-              onChange={(e) => setCurrentEditText(e.target.value)}
+              onChange={e => setCurrentEditText(e.target.value)}
             />
             <div className="text-sm text-gray-600">
               Conditions: {conditionParts.length ? conditionParts.join(", ") : "(none)"}
@@ -276,14 +326,12 @@ export default function EditPermutationUI() {
           {/* Version graph */}
           <div>
             <h2 className="font-semibold mt-6">Version Graph:</h2>
-            <VersionGraph
-              edges={graphEdges}
-              onSelectDraft={setSelectedDraft}
-            />
+            <VersionGraph edges={graphEdges} onSelectDraft={setSelectedDraft} />
           </div>
         </>
       )}
     </div>
   );
 }
+
 
