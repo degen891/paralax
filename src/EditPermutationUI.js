@@ -392,9 +392,3 @@ export default function EditPermutationUI() {
     </div>
   );
 }
-
-
-
-
-
-
