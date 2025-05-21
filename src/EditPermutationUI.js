@@ -1,34 +1,21 @@
-from IPython.display import Markdown
-
-code = r"""
 import React, { useState, useEffect, useRef } from "react";
 import VersionGraph from "./VersionGraph";
 
 export default function EditPermutationUI() {
-  // 1️⃣ User-provided initial draft
+  // 1️⃣ State
   const [defaultDraft, setDefaultDraft] = useState("");
   const [drafts, setDrafts] = useState([]);
   const [selectedDraft, setSelectedDraft] = useState("");
-
-  // 2️⃣ Free-style edit buffer
   const [currentEditText, setCurrentEditText] = useState("");
-
-  // 3️⃣ Conditions & highlights
   const [conditionParts, setConditionParts] = useState([]);
   const [highlighted, setHighlighted] = useState([]);
-
-  // 4️⃣ History / redo for undo-redo
   const [history, setHistory] = useState([]);
   const [redoStack, setRedoStack] = useState([]);
-
-  // 5️⃣ Version graph edges
   const [graphEdges, setGraphEdges] = useState([]);
+  const [suggestionHistory, setSuggestionHistory] = useState([]);
   const draftBoxRef = useRef();
 
-  // 6️⃣ Suggestion history for patch-transform offset adjustments
-  const [suggestionHistory, setSuggestionHistory] = useState([]);
-
-  // --- Undo / Redo via Ctrl+Z, Ctrl+Y ---
+  // 2️⃣ Undo / Redo (Ctrl+Z / Ctrl+Y)
   useEffect(() => {
     const handleKey = (e) => {
       if (e.ctrlKey && e.key === "z") undo();
@@ -59,7 +46,7 @@ export default function EditPermutationUI() {
     setDrafts(next);
   }
 
-  // --- Initialize drafts ---
+  // 3️⃣ Initialize
   function initializeDraft() {
     if (!defaultDraft.trim()) return;
     setDrafts([defaultDraft]);
@@ -68,10 +55,10 @@ export default function EditPermutationUI() {
     setGraphEdges([{ from: null, to: defaultDraft }]);
     setHistory([]);
     setRedoStack([]);
-    setSuggestionHistory([]); // reset history
+    setSuggestionHistory([]); // clear for patch-transform
   }
 
-  // Helper: find all indices of `sub` in `str`
+  // 4️⃣ Utilities
   function findAllIndices(str, sub) {
     const indices = [];
     let i = str.indexOf(sub);
@@ -82,7 +69,7 @@ export default function EditPermutationUI() {
     return indices;
   }
 
-  // --- Paragraph & sentence extraction for auto-conditions ---
+  // Splits into paragraphs & sentences ending in .?!;:
   function getAutoConditions(text, offset, removedLen) {
     const beforePara = text.lastIndexOf("\n", offset - 1);
     const afterPara = text.indexOf("\n", offset + removedLen);
@@ -90,7 +77,6 @@ export default function EditPermutationUI() {
     const paraEnd = afterPara === -1 ? text.length : afterPara;
     const paragraph = text.slice(paraStart, paraEnd);
 
-    // Split into sentences by .,;:?! 
     const sentenceRegex = /[^.?!;:]+[.?!;:]/g;
     let match, sentences = [];
     while ((match = sentenceRegex.exec(paragraph)) !== null) {
@@ -108,11 +94,10 @@ export default function EditPermutationUI() {
         return [s.text.trim()];
       }
     }
-
     return [paragraph.trim()];
   }
 
-  // --- Find sentence bounds around an offset ---
+  // Finds which sentence your cursor was in
   function findSentenceBounds(text, offset) {
     const beforePara = text.lastIndexOf("\n", offset - 1);
     const afterPara = text.indexOf("\n", offset);
@@ -129,22 +114,20 @@ export default function EditPermutationUI() {
         return { text: match[0], start, end };
       }
     }
-    // fallback to whole paragraph
     return { text: paragraph, start: paraStart, end: paraEnd };
   }
 
-  // --- Free-style edit application with relative-offset insertions and patch transform ---
+  // 5️⃣ Core: apply the edit across all drafts
   function applyEdit() {
     const oldText = selectedDraft;
     const newText = currentEditText;
 
-    // 1) compute diff by Longest Common Prefix/Suffix
+    // a) compute diff via LCP/LCS
     let prefixLen = 0;
-    const maxPrefix = Math.min(oldText.length, newText.length);
-    while (prefixLen < maxPrefix && oldText[prefixLen] === newText[prefixLen]) {
+    const maxP = Math.min(oldText.length, newText.length);
+    while (prefixLen < maxP && oldText[prefixLen] === newText[prefixLen]) {
       prefixLen++;
     }
-
     let suffixLen = 0;
     while (
       suffixLen < oldText.length - prefixLen &&
@@ -160,14 +143,14 @@ export default function EditPermutationUI() {
     const removedText = oldText.slice(prefixLen, oldText.length - suffixLen);
     const offset = prefixLen;
 
-    // 2) determine occurrenceIndex for removals
+    // b) which occurrence for removals
     let occurrenceIndex = 0;
     if (removedLen > 0) {
       const before = oldText.slice(0, offset);
       occurrenceIndex = findAllIndices(before, removedText).length;
     }
 
-    // 3) Detect new-sentence, new-paragraph, or in-sentence insertion
+    // c) classify insertion type
     const ins = insertedText;
     const trimmedIns = ins.trim();
     const isSentenceAddition = /^[^.?!;:]+[.?!;:]\s*$/.test(trimmedIns);
@@ -178,13 +161,13 @@ export default function EditPermutationUI() {
       !isSentenceAddition &&
       !isParagraphAddition;
 
-    // 4) AUTOMATIC CONDITIONS
+    // d) automatic conditions for mods
     let autoConds = [];
     if (removedLen > 0 || isInSentenceInsertion) {
       autoConds = getAutoConditions(oldText, offset, removedLen);
     }
 
-    // 5) For in-sentence insertions, record sentenceBounds + relativeOffset
+    // e) for in-sentence inserts, record sentence + relative offset
     let sentenceInfo = null;
     let relativeOffset = null;
     if (isInSentenceInsertion) {
@@ -192,10 +175,10 @@ export default function EditPermutationUI() {
       relativeOffset = offset - sentenceInfo.start;
     }
 
-    // 6) Compute transformed insertion offset for pure additions
+    // f) for pure sentence/paragraph adds: compute effectiveOffset by patch-transform
     let effectiveOffset = offset;
     if (!isInSentenceInsertion && (isSentenceAddition || isParagraphAddition)) {
-      suggestionHistory.forEach(h => {
+      suggestionHistory.forEach((h) => {
         if (h.offset < offset) {
           effectiveOffset += (h.insertedLen - h.removedLen);
         }
@@ -212,15 +195,15 @@ export default function EditPermutationUI() {
       isInSentenceInsertion,
       sentenceInfo,
       relativeOffset,
-      effectiveOffset
+      effectiveOffset,
     };
 
-    // 7) apply across all drafts
+    // g) apply to every draft
     const newSet = new Set(drafts);
     const edges = [];
 
     drafts.forEach((d) => {
-      // check conditions
+      // check all conditions
       if (
         suggestion.conditionParts.length > 0 &&
         !suggestion.conditionParts.every((p) => d.includes(p))
@@ -232,15 +215,15 @@ export default function EditPermutationUI() {
 
       // removal/replacement
       if (suggestion.removedLen > 0) {
-        const idxList = findAllIndices(d, suggestion.removedText);
-        if (idxList.length <= suggestion.occurrenceIndex) return;
-        const pos = idxList[suggestion.occurrenceIndex];
+        const idxs = findAllIndices(d, suggestion.removedText);
+        if (idxs.length <= suggestion.occurrenceIndex) return;
+        const pos = idxs[suggestion.occurrenceIndex];
         newDraft =
           d.slice(0, pos) +
           suggestion.insertedText +
           d.slice(pos + suggestion.removedLen);
       }
-      // in-sentence insertion at the same relative offset
+      // in‐sentence insertion
       else if (suggestion.isInSentenceInsertion) {
         const { text: sentText } = suggestion.sentenceInfo;
         const idx = d.indexOf(sentText);
@@ -251,7 +234,7 @@ export default function EditPermutationUI() {
           suggestion.insertedText +
           d.slice(insertAt);
       }
-      // pure insertion (new sentence/paragraph) using effectiveOffset
+      // pure sentence/paragraph add
       else if (suggestion.insertedText.length > 0) {
         const at = Math.min(suggestion.effectiveOffset, d.length);
         newDraft =
@@ -266,19 +249,18 @@ export default function EditPermutationUI() {
       }
     });
 
-    // 8) commit & reset UI and history
+    // h) commit
     saveHistory(Array.from(newSet), edges);
     setConditionParts([]);
     setHighlighted([]);
     setCurrentEditText(selectedDraft);
-    // record this suggestion for future transforms
-    setSuggestionHistory(h => [
+    setSuggestionHistory((h) => [
       ...h,
-      { offset, removedLen, insertedLen: insertedText.length }
+      { offset, removedLen, insertedLen: insertedText.length },
     ]);
   }
 
-  // --- Text selection for manual conditions (Ctrl+drag) ---
+  // 6️⃣ Manual conditions
   function handleSelect() {
     const sel = window.getSelection();
     if (!sel || !sel.toString()) return;
@@ -296,7 +278,7 @@ export default function EditPermutationUI() {
     sel.removeAllRanges();
   }
 
-  // --- Highlight rendering ---
+  // 7️⃣ Highlight rendering
   function renderWithHighlights(text) {
     if (!highlighted.length) return text;
     let segments = [text];
@@ -314,12 +296,103 @@ export default function EditPermutationUI() {
     return segments;
   }
 
+  // 8️⃣ UI
   return (
-    <div>…{/* JSX unchanged from before */}</div>
+    <div className="p-4 space-y-6 text-gray-800">
+      <h1 className="text-2xl font-bold">Edit Permutation UI</h1>
+
+      {/* STEP 1: Initial Draft */}
+      <div className="space-y-2">
+        <label className="block font-medium">Initial Draft:</label>
+        <textarea
+          className="w-full p-2 border rounded bg-white whitespace-pre-wrap min-h-[80px]"
+          value={defaultDraft}
+          onChange={(e) => setDefaultDraft(e.target.value)}
+          placeholder="Type starting text…"
+        />
+        <button
+          className="bg-green-600 text-white px-4 py-2 rounded"
+          onClick={initializeDraft}
+        >
+          Set
+        </button>
+      </div>
+
+      {drafts.length > 0 && (
+        <>
+          {/* All Drafts */}
+          <div>
+            <h2 className="font-semibold">All Drafts:</h2>
+            <ul className="flex flex-wrap gap-2">
+              {drafts.map((d, i) => (
+                <li
+                  key={i}
+                  onClick={() => {
+                    setSelectedDraft(d);
+                    setCurrentEditText(d);
+                    setHighlighted([]);
+                    setConditionParts([]);
+                  }}
+                  className={`px-2 py-1 rounded cursor-pointer ${
+                    d === selectedDraft ? "bg-blue-200" : "bg-gray-100"
+                  }`}
+                >
+                  {d}
+                </li>
+              ))}
+            </ul>
+          </div>
+
+          {/* Free-style Edit */}
+          <div>
+            <h2 className="font-semibold">Selected Draft (edit freely):</h2>
+            <textarea
+              ref={draftBoxRef}
+              onMouseUp={handleSelect}
+              className="w-full p-2 border rounded bg-white whitespace-pre-wrap min-h-[80px]"
+              value={currentEditText}
+              onChange={(e) => setCurrentEditText(e.target.value)}
+            />
+            <div className="text-sm text-gray-600">
+              Conditions:{" "}
+              {conditionParts.length ? conditionParts.join(", ") : "(none)"}
+            </div>
+            <div className="space-x-2 mt-2">
+              <button
+                className="bg-blue-600 text-white px-4 py-2 rounded"
+                onClick={applyEdit}
+              >
+                Submit Edit
+              </button>
+              <button
+                className="bg-gray-200 px-4 py-2 rounded"
+                onClick={undo}
+              >
+                Undo (Ctrl+Z)
+              </button>
+              <button
+                className="bg-gray-200 px-4 py-2 rounded"
+                onClick={redo}
+              >
+                Redo (Ctrl+Y)
+              </button>
+            </div>
+          </div>
+
+          {/* Version Graph */}
+          <div>
+            <h2 className="font-semibold mt-6">Version Graph:</h2>
+            <VersionGraph
+              edges={graphEdges}
+              onSelectDraft={setSelectedDraft}
+            />
+          </div>
+        </>
+      )}
+    </div>
   );
 }
-"""
-display(Markdown(f"```jsx\n{code}\n```"))
+
 
 
 
