@@ -2,34 +2,27 @@ import React, { useState, useEffect, useRef } from "react";
 import VersionGraph from "./VersionGraph";
 
 export default function EditPermutationUI() {
-  // 1️⃣ User-provided initial draft
-  const [defaultDraft, setDefaultDraft] = useState("");
-  const [drafts, setDrafts] = useState([]);
-  const [selectedDraft, setSelectedDraft] = useState("");
-
-  // 2️⃣ Free-style edit buffer
+  // ─── State ────────────────────────────────────────────────────────────────
+  const [defaultDraft, setDefaultDraft]       = useState("");
+  const [drafts, setDrafts]                   = useState([]);
+  const [selectedDraft, setSelectedDraft]     = useState("");
   const [currentEditText, setCurrentEditText] = useState("");
-
-  // 3️⃣ Conditions & highlights
-  const [conditionParts, setConditionParts] = useState([]);
-  const [highlighted, setHighlighted] = useState([]);
-
-  // 4️⃣ History / redo for undo-redo
-  const [history, setHistory] = useState([]);
-  const [redoStack, setRedoStack] = useState([]);
-
-  // 5️⃣ Version graph edges
-  const [graphEdges, setGraphEdges] = useState([]);
+  const [conditionParts, setConditionParts]   = useState([]);
+  const [highlighted, setHighlighted]         = useState([]);
+  const [history, setHistory]                 = useState([]);
+  const [redoStack, setRedoStack]             = useState([]);
+  const [graphEdges, setGraphEdges]           = useState([]);
+  const [structuralHistory, setStructuralHistory] = useState([]); 
   const draftBoxRef = useRef();
 
-  // --- Undo / Redo via Ctrl+Z, Ctrl+Y ---
+  // ─── Undo / Redo ───────────────────────────────────────────────────────────
   useEffect(() => {
-    const handleKey = (e) => {
+    const onKey = (e) => {
       if (e.ctrlKey && e.key === "z") undo();
       if (e.ctrlKey && e.key === "y") redo();
     };
-    window.addEventListener("keydown", handleKey);
-    return () => window.removeEventListener("keydown", handleKey);
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
   }, [history, redoStack, drafts]);
 
   function saveHistory(newDrafts, newEdges) {
@@ -40,6 +33,8 @@ export default function EditPermutationUI() {
   }
   function undo() {
     if (!history.length) return;
+    // also roll back last structural change
+    setStructuralHistory((sh) => sh.slice(0, -1));
     const prev = history[history.length - 1];
     setRedoStack((r) => [drafts, ...r]);
     setHistory((h) => h.slice(0, -1));
@@ -53,7 +48,7 @@ export default function EditPermutationUI() {
     setDrafts(next);
   }
 
-  // --- Initialize drafts ---
+  // ─── Initialize ────────────────────────────────────────────────────────────
   function initializeDraft() {
     if (!defaultDraft.trim()) return;
     setDrafts([defaultDraft]);
@@ -62,243 +57,261 @@ export default function EditPermutationUI() {
     setGraphEdges([{ from: null, to: defaultDraft }]);
     setHistory([]);
     setRedoStack([]);
+    setStructuralHistory([]); 
   }
 
-  // Helper: find all indices of `sub` in `str`
+  // ─── Utilities ─────────────────────────────────────────────────────────────
   function findAllIndices(str, sub) {
-    const indices = [];
+    const idxs = [];
     let i = str.indexOf(sub);
     while (i !== -1) {
-      indices.push(i);
+      idxs.push(i);
       i = str.indexOf(sub, i + 1);
     }
-    return indices;
+    return idxs;
   }
 
-  // --- Paragraph & sentence extraction for auto-conditions ---
-  function getAutoConditions(text, offset, removedLen) {
-    const beforePara = text.lastIndexOf("\n", offset - 1);
-    const afterPara = text.indexOf("\n", offset + removedLen);
-    const paraStart = beforePara + 1;
-    const paraEnd = afterPara === -1 ? text.length : afterPara;
-    const paragraph = text.slice(paraStart, paraEnd);
-
-    // Expanded to include ?, !, ., ;, :
-    const sentenceRegex = /[^.?!;:]+[.?!;:]/g;
-    let match, sentences = [];
-    while ((match = sentenceRegex.exec(paragraph)) !== null) {
-      sentences.push({
-        text: match[0],
-        start: paraStart + match.index,
-        end: paraStart + match.index + match[0].length
-      });
+  function splitIntoSentences(para) {
+    const regex = /[^.?!;:]+[.?!;:]/g;
+    const out = [];
+    let m;
+    while ((m = regex.exec(para)) !== null) {
+      out.push({ text: m[0], start: m.index, end: m.index + m[0].length });
     }
+    return out;
+  }
 
-    const editStart = offset;
-    const editEnd = offset + removedLen;
-    for (let s of sentences) {
-      if (!(editEnd <= s.start || editStart >= s.end)) {
+  function getAutoConditions(text, offset, removedLen) {
+    const b = text.lastIndexOf("\n", offset - 1);
+    const a = text.indexOf("\n", offset + removedLen);
+    const ps = b + 1, pe = a === -1 ? text.length : a;
+    const para = text.slice(ps, pe);
+
+    const sents = splitIntoSentences(para).map(s => ({
+      ...s, start: s.start + ps, end: s.end + ps
+    }));
+    for (const s of sents) {
+      if (!(offset + removedLen <= s.start || offset >= s.end)) {
         return [s.text.trim()];
       }
     }
-
-    return [paragraph.trim()];
+    return [para.trim()];
   }
 
-  // --- NEW: find the sentence bounds around an offset ---
   function findSentenceBounds(text, offset) {
-    const beforePara = text.lastIndexOf("\n", offset - 1);
-    const afterPara = text.indexOf("\n", offset);
-    const paraStart = beforePara + 1;
-    const paraEnd = afterPara === -1 ? text.length : afterPara;
-    const paragraph = text.slice(paraStart, paraEnd);
-
-    // Expanded to include ?, !, ., ;, :
-    const sentenceRegex = /[^.?!;:]+[.?!;:]/g;
-    let match;
-    while ((match = sentenceRegex.exec(paragraph)) !== null) {
-      const start = paraStart + match.index;
-      const end = start + match[0].length;
-      if (offset >= start && offset <= end) {
-        return { text: match[0], start, end };
+    const b = text.lastIndexOf("\n", offset - 1);
+    const a = text.indexOf("\n", offset);
+    const ps = b + 1, pe = a === -1 ? text.length : a;
+    const para = text.slice(ps, pe);
+    const sents = splitIntoSentences(para);
+    let cum = ps;
+    for (const s of sents) {
+      const absStart = cum + s.start, absEnd = cum + s.end;
+      if (offset >= absStart && offset <= absEnd) {
+        return { text: para.slice(s.start, s.end), start: absStart, end: absEnd };
       }
     }
-    // fallback to whole paragraph
-    return { text: paragraph, start: paraStart, end: paraEnd };
+    return { text: para, start: ps, end: pe };
   }
 
-  // --- Free-style edit application with relative-offset insertions ---
+  // ─── Core: apply edit across drafts ─────────────────────────────────────────
   function applyEdit() {
-    const oldText = selectedDraft;
-    const newText = currentEditText;
-
-    // 1) compute diff by Longest Common Prefix/Suffix
-    let prefixLen = 0;
-    const maxPrefix = Math.min(oldText.length, newText.length);
-    while (prefixLen < maxPrefix && oldText[prefixLen] === newText[prefixLen]) {
-      prefixLen++;
+    const oldText = selectedDraft, newText = currentEditText;
+    // diff
+    let p=0, maxP=Math.min(oldText.length,newText.length);
+    while(p<maxP && oldText[p]===newText[p]) p++;
+    let s=0;
+    while(s<oldText.length-p && s<newText.length-p &&
+          oldText[oldText.length-1-s]===newText[newText.length-1-s]) s++;
+    const removedLen   = oldText.length - p - s;
+    const insertedText = newText.slice(p,newText.length - s);
+    const removedText  = oldText.slice(p, oldText.length - s);
+    const offset       = p;
+    // occurrence for removals
+    let occ=0;
+    if(removedLen>0){
+      const before = oldText.slice(0,offset);
+      occ = findAllIndices(before,removedText).length;
     }
+    // classify
+    const ti = insertedText.trim();
+    const isSentAdd = /^[^.?!;:]+[.?!;:]\s*$/.test(ti);
+    const isParaAdd = insertedText.includes("\n");
+    const isInSent = removedLen===0 && insertedText.length>0 && !isSentAdd && !isParaAdd;
 
-    let suffixLen = 0;
-    while (
-      suffixLen < oldText.length - prefixLen &&
-      suffixLen < newText.length - prefixLen &&
-      oldText[oldText.length - 1 - suffixLen] ===
-        newText[newText.length - 1 - suffixLen]
-    ) {
-      suffixLen++;
-    }
-
-    const removedLen = oldText.length - prefixLen - suffixLen;
-    const insertedText = newText.slice(prefixLen, newText.length - suffixLen);
-    const removedText = oldText.slice(prefixLen, oldText.length - suffixLen);
-    const offset = prefixLen;
-
-    // 2) determine occurrenceIndex for removals
-    let occurrenceIndex = 0;
+    // ─── AUTO-CONDITIONS ───────────────────────────────────────────────────────
+    let autoC = [];
     if (removedLen > 0) {
-      const before = oldText.slice(0, offset);
-      occurrenceIndex = findAllIndices(before, removedText).length;
+      // for removals: require only the snippet
+      autoC = [removedText];
+    } else if (isInSent) {
+      // for in-sentence inserts: condition on that sentence
+      autoC = getAutoConditions(oldText, offset, removedLen);
     }
 
-    // 3) Detect new-sentence, new-paragraph, or in-sentence insertion
-    const ins = insertedText;
-    const trimmedIns = ins.trim();
-    // Expanded to include ?, !, ., ;, :
-    const isSentenceAddition = /^[^.?!;:]+[.?!;:]\s*$/.test(trimmedIns);
-    const isParagraphAddition = ins.includes("\n");
-    const isInSentenceInsertion =
-      removedLen === 0 &&
-      ins.length > 0 &&
-      !isSentenceAddition &&
-      !isParagraphAddition;
-
-    // 4) AUTOMATIC CONDITIONS
-    let autoConds = [];
-    // removals and in-sentence modifications get auto-conds
-    if (removedLen > 0 || isInSentenceInsertion) {
-      autoConds = getAutoConditions(oldText, offset, removedLen);
+    // in-sentence record
+    let sentInfo=null, relOff=null;
+    if(isInSent){
+      sentInfo = findSentenceBounds(oldText,offset);
+      relOff   = offset - sentInfo.start;
     }
 
-    // 5) For in-sentence insertions, record sentenceBounds + relativeOffset
-    let sentenceInfo = null;
-    let relativeOffset = null;
-    if (isInSentenceInsertion) {
-      sentenceInfo = findSentenceBounds(oldText, offset);
-      relativeOffset = offset - sentenceInfo.start;
+    // structural record for pure adds
+    let paraIdx=null, sentIdx=null;
+    if(!isInSent && (isSentAdd||isParaAdd)){
+      const paras = oldText.split("\n");
+      let cum=0, chosenPara=paras.length;
+      for(let i=0;i<paras.length;i++){
+        if(offset <= cum+paras[i].length){
+          chosenPara=i; break;
+        }
+        cum += paras[i].length+1;
+      }
+      paraIdx = chosenPara;
+      if(isSentAdd){
+        const para = paras[chosenPara]||"";
+        const sents = splitIntoSentences(para);
+        const offInPara = offset - (cum - paras[chosenPara]?.length -1||0);
+        let cnt=0;
+        for(const sen of sents){
+          if(sen.end < offInPara) cnt++;
+        }
+        sentIdx = cnt;
+      }
     }
 
     const suggestion = {
-      offset,
       removedLen,
       removedText,
       insertedText,
-      occurrenceIndex,
-      conditionParts: [...autoConds, ...conditionParts],
-      isInSentenceInsertion,
-      sentenceInfo,
-      relativeOffset,
+      occurrenceIndex: occ,
+      conditionParts: [...autoC, ...conditionParts],
+      isInSentenceInsertion: isInSent,
+      sentenceInfo: sentInfo,
+      relativeOffset: relOff,
+      pureAddParaIndex: paraIdx,
+      pureAddSentIndex: sentIdx
     };
 
-    // 6) apply across all drafts
-    const newSet = new Set(drafts);
-    const edges = [];
-
-    drafts.forEach((d) => {
-      // check conditions
-      if (
-        suggestion.conditionParts.length > 0 &&
-        !suggestion.conditionParts.every((p) => d.includes(p))
-      ) {
+    const newSet=new Set(drafts), edges=[];
+    drafts.forEach(d=>{
+      if(suggestion.conditionParts.length>0 &&
+         !suggestion.conditionParts.every(p=>d.includes(p)))
         return;
+
+      let nd=d;
+      // removal
+      if(suggestion.removedLen>0){
+        const idxs=findAllIndices(d,suggestion.removedText);
+        if(idxs.length<=suggestion.occurrenceIndex) return;
+        const pos=idxs[suggestion.occurrenceIndex];
+        nd = d.slice(0,pos)
+           + suggestion.insertedText
+           + d.slice(pos+suggestion.removedLen);
+      }
+      // in‐sentence insertion
+      else if(suggestion.isInSentenceInsertion){
+        const {text:stxt,start} = suggestion.sentenceInfo;
+        const idx = d.indexOf(stxt);
+        if(idx===-1) return;
+        const at = idx + suggestion.relativeOffset;
+        nd = d.slice(0,at)
+           + suggestion.insertedText
+           + d.slice(at);
+      }
+      // pure sentence add
+      else if(isSentAdd){
+        const paras = d.split("\n");
+        let effPara = suggestion.pureAddParaIndex;
+        structuralHistory.forEach(h=>{
+          if(h.type==="para" && h.index < suggestion.pureAddParaIndex){
+            effPara += h.delta;
+          }
+        });
+        effPara = Math.max(0, Math.min(effPara, paras.length-1));
+        const para = paras[effPara]||"";
+        const sents = splitIntoSentences(para);
+        let effSent = suggestion.pureAddSentIndex;
+        structuralHistory.forEach(h=>{
+          if(h.type==="sent" && h.paraIndex===suggestion.pureAddParaIndex && h.index < suggestion.pureAddSentIndex){
+            effSent += h.delta;
+          }
+        });
+        effSent = Math.max(0, Math.min(effSent, sents.length));
+        const before = sents.slice(0,effSent).map(x=>x.text).join("");
+        const after  = sents.slice(effSent).map(x=>x.text).join("");
+        paras[effPara] = before + suggestion.insertedText + after;
+        nd = paras.join("\n");
+        setStructuralHistory(sh=>[
+          ...sh,
+          {type:"sent", paraIndex:suggestion.pureAddParaIndex, index:suggestion.pureAddSentIndex, delta:1}
+        ]);
+      }
+      // pure paragraph add
+      else if(isParaAdd){
+        const paras = d.split("\n");
+        let effPara = suggestion.pureAddParaIndex;
+        structuralHistory.forEach(h=>{
+          if(h.type==="para" && h.index < suggestion.pureAddParaIndex){
+            effPara += h.delta;
+          }
+        });
+        effPara = Math.max(0, Math.min(effPara, paras.length));
+        paras.splice(effPara,0,suggestion.insertedText);
+        nd = paras.join("\n");
+        setStructuralHistory(sh=>[
+          ...sh,
+          {type:"para", index:suggestion.pureAddParaIndex, delta:1}
+        ]);
       }
 
-      let newDraft = d;
-
-      // removal/replacement
-      if (suggestion.removedLen > 0) {
-        const idxList = findAllIndices(d, suggestion.removedText);
-        if (idxList.length <= suggestion.occurrenceIndex) return;
-        const pos = idxList[suggestion.occurrenceIndex];
-        newDraft =
-          d.slice(0, pos) +
-          suggestion.insertedText +
-          d.slice(pos + suggestion.removedLen);
-      }
-      // in-sentence insertion at the same relative offset
-      else if (suggestion.isInSentenceInsertion) {
-        const { text: sentText } = suggestion.sentenceInfo;
-        const idx = d.indexOf(sentText);
-        if (idx === -1) return;
-        const insertAt = idx + suggestion.relativeOffset;
-        newDraft =
-          d.slice(0, insertAt) +
-          suggestion.insertedText +
-          d.slice(insertAt);
-      }
-      // pure insertion (new sentence/paragraph)
-      else if (suggestion.insertedText.length > 0) {
-        const insertAt = Math.min(suggestion.offset, d.length);
-        newDraft =
-          d.slice(0, insertAt) +
-          suggestion.insertedText +
-          d.slice(insertAt);
-      }
-
-      if (newDraft !== d && !newSet.has(newDraft)) {
-        newSet.add(newDraft);
-        edges.push({ from: d, to: newDraft });
+      if(nd!==d && !newSet.has(nd)){
+        newSet.add(nd);
+        edges.push({from:d,to:nd});
       }
     });
 
-    // 7) save & reset
     saveHistory(Array.from(newSet), edges);
     setConditionParts([]);
     setHighlighted([]);
     setCurrentEditText(selectedDraft);
   }
 
-  // --- Text selection for manual conditions (Ctrl+drag) ---
+  // ─── Manual conditions ─────────────────────────────────────────────────────
   function handleSelect() {
     const sel = window.getSelection();
-    if (!sel || !sel.toString()) return;
+    if(!sel||!sel.toString()) return;
     const txt = sel.toString();
-    setConditionParts((prev) =>
-      (window.event.ctrlKey || window.event.metaKey)
-        ? [...prev, txt]
-        : [txt]
+    setConditionParts(prev => 
+      (window.event.ctrlKey || window.event.metaKey) ? [...prev, txt] : [txt]
     );
-    setHighlighted((prev) =>
-      (window.event.ctrlKey || window.event.metaKey)
-        ? [...prev, txt]
-        : [txt]
+    setHighlighted(prev =>
+      (window.event.ctrlKey || window.event.metaKey) ? [...prev, txt] : [txt]
     );
     sel.removeAllRanges();
   }
 
-  // --- Highlight rendering ---
+  // ─── Highlight rendering ───────────────────────────────────────────────────
   function renderWithHighlights(text) {
     if (!highlighted.length) return text;
-    let segments = [text];
-    highlighted.forEach((frag) => {
-      segments = segments.flatMap((seg) =>
+    let segs = [text];
+    highlighted.forEach(frag => {
+      segs = segs.flatMap(seg =>
         typeof seg === "string" && seg.includes(frag)
           ? seg.split(frag).flatMap((part, i, arr) =>
-              i < arr.length - 1
-                ? [part, <mark key={`${frag}-${i}`}>{frag}</mark>]
-                : [part]
+              i < arr.length - 1 ? [part, <mark key={`${frag}-${i}`}>{frag}</mark>] : [part]
             )
           : [seg]
       );
     });
-    return segments;
+    return segs;
   }
 
+  // ─── UI ────────────────────────────────────────────────────────────────────
   return (
     <div className="p-4 space-y-6 text-gray-800">
       <h1 className="text-2xl font-bold">Edit Permutation UI</h1>
-
-      {/* STEP 1: Set initial draft */}
+      {/* Initial Draft */}
       <div className="space-y-2">
         <label className="block font-medium">Initial Draft:</label>
         <textarea
@@ -317,7 +330,7 @@ export default function EditPermutationUI() {
 
       {drafts.length > 0 && (
         <>
-          {/* Draft list */}
+          {/* All Drafts */}
           <div>
             <h2 className="font-semibold">All Drafts:</h2>
             <ul className="flex flex-wrap gap-2">
@@ -340,7 +353,7 @@ export default function EditPermutationUI() {
             </ul>
           </div>
 
-          {/* Free-style edit area */}
+          {/* Free‐style Edit */}
           <div>
             <h2 className="font-semibold">Selected Draft (edit freely):</h2>
             <textarea
@@ -361,16 +374,22 @@ export default function EditPermutationUI() {
               >
                 Submit Edit
               </button>
-              <button className="bg-gray-200 px-4 py-2 rounded" onClick={undo}>
+              <button
+                className="bg-gray-200 px-4 py-2 rounded"
+                onClick={undo}
+              >
                 Undo (Ctrl+Z)
               </button>
-              <button className="bg-gray-200 px-4 py-2 rounded" onClick={redo}>
+              <button
+                className="bg-gray-200 px-4 py-2 rounded"
+                onClick={redo}
+              >
                 Redo (Ctrl+Y)
               </button>
             </div>
           </div>
 
-          {/* Version graph */}
+          {/* Version Graph */}
           <div>
             <h2 className="font-semibold mt-6">Version Graph:</h2>
             <VersionGraph
@@ -383,6 +402,7 @@ export default function EditPermutationUI() {
     </div>
   );
 }
+
 
 
 
