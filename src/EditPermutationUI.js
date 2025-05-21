@@ -77,15 +77,14 @@ export default function EditPermutationUI() {
 
   // --- Paragraph & sentence extraction for auto-conditions ---
   function getAutoConditions(text, offset, removedLen) {
-    // Paragraph boundaries by \n
     const beforePara = text.lastIndexOf("\n", offset - 1);
     const afterPara = text.indexOf("\n", offset + removedLen);
     const paraStart = beforePara + 1;
     const paraEnd = afterPara === -1 ? text.length : afterPara;
     const paragraph = text.slice(paraStart, paraEnd);
 
-    // Split paragraph into sentences by .,;:
-    const sentenceRegex = /[^.;:]+[.;:]/g;
+    // Expanded to include ?, !, ., ;, :
+    const sentenceRegex = /[^.?!;:]+[.?!;:]/g;
     let match, sentences = [];
     while ((match = sentenceRegex.exec(paragraph)) !== null) {
       sentences.push({
@@ -95,21 +94,40 @@ export default function EditPermutationUI() {
       });
     }
 
-    // Check if edit overlaps any sentence
     const editStart = offset;
     const editEnd = offset + removedLen;
     for (let s of sentences) {
       if (!(editEnd <= s.start || editStart >= s.end)) {
-        // overlap → auto-condition on this sentence
         return [s.text.trim()];
       }
     }
 
-    // No overlapping sentence → condition on paragraph
     return [paragraph.trim()];
   }
 
-  // --- Free-style edit application with auto-conditions ---
+  // --- NEW: find the sentence bounds around an offset ---
+  function findSentenceBounds(text, offset) {
+    const beforePara = text.lastIndexOf("\n", offset - 1);
+    const afterPara = text.indexOf("\n", offset);
+    const paraStart = beforePara + 1;
+    const paraEnd = afterPara === -1 ? text.length : afterPara;
+    const paragraph = text.slice(paraStart, paraEnd);
+
+    // Expanded to include ?, !, ., ;, :
+    const sentenceRegex = /[^.?!;:]+[.?!;:]/g;
+    let match;
+    while ((match = sentenceRegex.exec(paragraph)) !== null) {
+      const start = paraStart + match.index;
+      const end = start + match[0].length;
+      if (offset >= start && offset <= end) {
+        return { text: match[0], start, end };
+      }
+    }
+    // fallback to whole paragraph
+    return { text: paragraph, start: paraStart, end: paraEnd };
+  }
+
+  // --- Free-style edit application with relative-offset insertions ---
   function applyEdit() {
     const oldText = selectedDraft;
     const newText = currentEditText;
@@ -117,10 +135,9 @@ export default function EditPermutationUI() {
     // 1) compute diff by Longest Common Prefix/Suffix
     let prefixLen = 0;
     const maxPrefix = Math.min(oldText.length, newText.length);
-    while (
-      prefixLen < maxPrefix &&
-      oldText[prefixLen] === newText[prefixLen]
-    ) prefixLen++;
+    while (prefixLen < maxPrefix && oldText[prefixLen] === newText[prefixLen]) {
+      prefixLen++;
+    }
 
     let suffixLen = 0;
     while (
@@ -128,7 +145,9 @@ export default function EditPermutationUI() {
       suffixLen < newText.length - prefixLen &&
       oldText[oldText.length - 1 - suffixLen] ===
         newText[newText.length - 1 - suffixLen]
-    ) suffixLen++;
+    ) {
+      suffixLen++;
+    }
 
     const removedLen = oldText.length - prefixLen - suffixLen;
     const insertedText = newText.slice(prefixLen, newText.length - suffixLen);
@@ -142,40 +161,51 @@ export default function EditPermutationUI() {
       occurrenceIndex = findAllIndices(before, removedText).length;
     }
 
-    // 3) AUTOMATIC CONDITIONS
-    //   • Any removal is a modification → auto-cond
-    //   • Any insertion that's NOT a full new sentence or paragraph → auto-cond
-    //   • Pure sentence (ending . ; :) or paragraph (contains \n) additions → no auto-cond
+    // 3) Detect new-sentence, new-paragraph, or in-sentence insertion
     const ins = insertedText;
     const trimmedIns = ins.trim();
-    const isSentenceAddition = /^[^.;:]+[.;:]\s*$/.test(trimmedIns);
+    // Expanded to include ?, !, ., ;, :
+    const isSentenceAddition = /^[^.?!;:]+[.?!;:]\s*$/.test(trimmedIns);
     const isParagraphAddition = ins.includes("\n");
-    const isModification =
-      removedLen > 0 ||
-      (removedLen === 0 && ins.length > 0 && !isSentenceAddition && !isParagraphAddition);
+    const isInSentenceInsertion =
+      removedLen === 0 &&
+      ins.length > 0 &&
+      !isSentenceAddition &&
+      !isParagraphAddition;
 
+    // 4) AUTOMATIC CONDITIONS
     let autoConds = [];
-    if (isModification) {
+    // removals and in-sentence modifications get auto-conds
+    if (removedLen > 0 || isInSentenceInsertion) {
       autoConds = getAutoConditions(oldText, offset, removedLen);
     }
 
-    // 4) build suggestion object
+    // 5) For in-sentence insertions, record sentenceBounds + relativeOffset
+    let sentenceInfo = null;
+    let relativeOffset = null;
+    if (isInSentenceInsertion) {
+      sentenceInfo = findSentenceBounds(oldText, offset);
+      relativeOffset = offset - sentenceInfo.start;
+    }
+
     const suggestion = {
       offset,
       removedLen,
       removedText,
       insertedText,
       occurrenceIndex,
-      // merge auto-conds first, then user-set ones
       conditionParts: [...autoConds, ...conditionParts],
+      isInSentenceInsertion,
+      sentenceInfo,
+      relativeOffset,
     };
 
-    // 5) apply across all drafts
+    // 6) apply across all drafts
     const newSet = new Set(drafts);
     const edges = [];
 
     drafts.forEach((d) => {
-      // check all conditions
+      // check conditions
       if (
         suggestion.conditionParts.length > 0 &&
         !suggestion.conditionParts.every((p) => d.includes(p))
@@ -195,7 +225,18 @@ export default function EditPermutationUI() {
           suggestion.insertedText +
           d.slice(pos + suggestion.removedLen);
       }
-      // insertion only
+      // in-sentence insertion at the same relative offset
+      else if (suggestion.isInSentenceInsertion) {
+        const { text: sentText } = suggestion.sentenceInfo;
+        const idx = d.indexOf(sentText);
+        if (idx === -1) return;
+        const insertAt = idx + suggestion.relativeOffset;
+        newDraft =
+          d.slice(0, insertAt) +
+          suggestion.insertedText +
+          d.slice(insertAt);
+      }
+      // pure insertion (new sentence/paragraph)
       else if (suggestion.insertedText.length > 0) {
         const insertAt = Math.min(suggestion.offset, d.length);
         newDraft =
@@ -210,7 +251,7 @@ export default function EditPermutationUI() {
       }
     });
 
-    // 6) save & reset
+    // 7) save & reset
     saveHistory(Array.from(newSet), edges);
     setConditionParts([]);
     setHighlighted([]);
@@ -311,9 +352,7 @@ export default function EditPermutationUI() {
             />
             <div className="text-sm text-gray-600">
               Conditions:{" "}
-              {conditionParts.length
-                ? conditionParts.join(", ")
-                : "(none)"}
+              {conditionParts.length ? conditionParts.join(", ") : "(none)"}
             </div>
             <div className="space-x-2 mt-2">
               <button
@@ -322,16 +361,10 @@ export default function EditPermutationUI() {
               >
                 Submit Edit
               </button>
-              <button
-                className="bg-gray-200 px-4 py-2 rounded"
-                onClick={undo}
-              >
+              <button className="bg-gray-200 px-4 py-2 rounded" onClick={undo}>
                 Undo (Ctrl+Z)
               </button>
-              <button
-                className="bg-gray-200 px-4 py-2 rounded"
-                onClick={redo}
-              >
+              <button className="bg-gray-200 px-4 py-2 rounded" onClick={redo}>
                 Redo (Ctrl+Y)
               </button>
             </div>
@@ -350,6 +383,7 @@ export default function EditPermutationUI() {
     </div>
   );
 }
+
 
 
 
