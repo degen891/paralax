@@ -2,27 +2,26 @@ import React, { useState, useEffect, useRef } from "react";
 import VersionGraph from "./VersionGraph";
 
 export default function EditPermutationUI() {
-  // 1️⃣ State
-  const [defaultDraft, setDefaultDraft] = useState("");
-  const [drafts, setDrafts] = useState([]);
-  const [selectedDraft, setSelectedDraft] = useState("");
+  // ─── State ────────────────────────────────────────────────────────────────
+  const [defaultDraft, setDefaultDraft]       = useState("");
+  const [drafts, setDrafts]                   = useState([]);
+  const [selectedDraft, setSelectedDraft]     = useState("");
   const [currentEditText, setCurrentEditText] = useState("");
-  const [conditionParts, setConditionParts] = useState([]);
-  const [highlighted, setHighlighted] = useState([]);
-  const [history, setHistory] = useState([]);
-  const [redoStack, setRedoStack] = useState([]);
-  const [graphEdges, setGraphEdges] = useState([]);
-  const [suggestionHistory, setSuggestionHistory] = useState([]);
+  const [conditionParts, setConditionParts]   = useState([]);
+  const [highlighted, setHighlighted]         = useState([]);
+  const [history, setHistory]                 = useState([]);
+  const [redoStack, setRedoStack]             = useState([]);
+  const [graphEdges, setGraphEdges]           = useState([]);
   const draftBoxRef = useRef();
 
-  // 2️⃣ Undo / Redo (Ctrl+Z / Ctrl+Y)
+  // ─── Undo / Redo ───────────────────────────────────────────────────────────
   useEffect(() => {
-    const handleKey = (e) => {
+    const onKey = (e) => {
       if (e.ctrlKey && e.key === "z") undo();
       if (e.ctrlKey && e.key === "y") redo();
     };
-    window.addEventListener("keydown", handleKey);
-    return () => window.removeEventListener("keydown", handleKey);
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
   }, [history, redoStack, drafts]);
 
   function saveHistory(newDrafts, newEdges) {
@@ -46,7 +45,7 @@ export default function EditPermutationUI() {
     setDrafts(next);
   }
 
-  // 3️⃣ Initialize
+  // ─── Initialize ────────────────────────────────────────────────────────────
   function initializeDraft() {
     if (!defaultDraft.trim()) return;
     setDrafts([defaultDraft]);
@@ -55,74 +54,83 @@ export default function EditPermutationUI() {
     setGraphEdges([{ from: null, to: defaultDraft }]);
     setHistory([]);
     setRedoStack([]);
-    setSuggestionHistory([]); // clear for patch-transform
   }
 
-  // 4️⃣ Utilities
+  // ─── Helpers ───────────────────────────────────────────────────────────────
   function findAllIndices(str, sub) {
-    const indices = [];
+    const idxs = [];
     let i = str.indexOf(sub);
     while (i !== -1) {
-      indices.push(i);
+      idxs.push(i);
       i = str.indexOf(sub, i + 1);
     }
-    return indices;
+    return idxs;
   }
 
-  // Splits into paragraphs & sentences ending in .?!;:
-  function getAutoConditions(text, offset, removedLen) {
-    const beforePara = text.lastIndexOf("\n", offset - 1);
-    const afterPara = text.indexOf("\n", offset + removedLen);
-    const paraStart = beforePara + 1;
-    const paraEnd = afterPara === -1 ? text.length : afterPara;
-    const paragraph = text.slice(paraStart, paraEnd);
-
-    const sentenceRegex = /[^.?!;:]+[.?!;:]/g;
-    let match, sentences = [];
-    while ((match = sentenceRegex.exec(paragraph)) !== null) {
-      sentences.push({
-        text: match[0],
-        start: paraStart + match.index,
-        end: paraStart + match.index + match[0].length
+  // Splits a paragraph into sentences (end‐chars .?!;:)
+  function splitIntoSentences(para) {
+    const regex = /[^.?!;:]+[.?!;:]/g;
+    const out = [];
+    let m;
+    while ((m = regex.exec(para)) !== null) {
+      out.push({
+        text: m[0],
+        start: m.index,
+        end: m.index + m[0].length,
       });
     }
+    return out;
+  }
 
-    const editStart = offset;
-    const editEnd = offset + removedLen;
-    for (let s of sentences) {
-      if (!(editEnd <= s.start || editStart >= s.end)) {
+  // Build automatic condition on sentence or paragraph
+  function getAutoConditions(text, offset, removedLen) {
+    const beforePara = text.lastIndexOf("\n", offset - 1);
+    const afterPara  = text.indexOf("\n", offset + removedLen);
+    const paraStart  = beforePara + 1;
+    const paraEnd    = afterPara === -1 ? text.length : afterPara;
+    const paragraph  = text.slice(paraStart, paraEnd);
+
+    const sentences = splitIntoSentences(paragraph).map(s => ({
+      ...s,
+      start: s.start + paraStart,
+      end:   s.end   + paraStart
+    }));
+
+    for (const s of sentences) {
+      if (!(offset + removedLen <= s.start || offset >= s.end)) {
         return [s.text.trim()];
       }
     }
     return [paragraph.trim()];
   }
 
-  // Finds which sentence your cursor was in
+  // Find sentence bounds around an edit offset
   function findSentenceBounds(text, offset) {
     const beforePara = text.lastIndexOf("\n", offset - 1);
-    const afterPara = text.indexOf("\n", offset);
-    const paraStart = beforePara + 1;
-    const paraEnd = afterPara === -1 ? text.length : afterPara;
-    const paragraph = text.slice(paraStart, paraEnd);
+    const afterPara  = text.indexOf("\n", offset);
+    const paraStart  = beforePara + 1;
+    const paraEnd    = afterPara === -1 ? text.length : afterPara;
+    const paragraph  = text.slice(paraStart, paraEnd);
 
-    const sentenceRegex = /[^.?!;:]+[.?!;:]/g;
-    let match;
-    while ((match = sentenceRegex.exec(paragraph)) !== null) {
-      const start = paraStart + match.index;
-      const end = start + match[0].length;
-      if (offset >= start && offset <= end) {
-        return { text: match[0], start, end };
+    const sentences = splitIntoSentences(paragraph);
+    let cum = paraStart;
+    for (const s of sentences) {
+      const absStart = cum + s.start;
+      const absEnd   = cum + s.end;
+      if (offset >= absStart && offset <= absEnd) {
+        return { text: paragraph.slice(s.start, s.end), start: absStart, end: absEnd };
       }
     }
+    // fallback
     return { text: paragraph, start: paraStart, end: paraEnd };
   }
 
-  // 5️⃣ Core: apply the edit across all drafts
+  // ─── Core: apply a free‐form edit to all drafts ────────────────────────────
   function applyEdit() {
     const oldText = selectedDraft;
     const newText = currentEditText;
 
-    // a) compute diff via LCP/LCS
+    // 1) Diff via Longest Common Prefix/Suffix
     let prefixLen = 0;
     const maxP = Math.min(oldText.length, newText.length);
     while (prefixLen < maxP && oldText[prefixLen] === newText[prefixLen]) {
@@ -138,22 +146,22 @@ export default function EditPermutationUI() {
       suffixLen++;
     }
 
-    const removedLen = oldText.length - prefixLen - suffixLen;
+    const removedLen   = oldText.length - prefixLen - suffixLen;
     const insertedText = newText.slice(prefixLen, newText.length - suffixLen);
-    const removedText = oldText.slice(prefixLen, oldText.length - suffixLen);
-    const offset = prefixLen;
+    const removedText  = oldText.slice(prefixLen, oldText.length - suffixLen);
+    const offset       = prefixLen;
 
-    // b) which occurrence for removals
+    // 2) occurrenceIndex for removals
     let occurrenceIndex = 0;
     if (removedLen > 0) {
       const before = oldText.slice(0, offset);
       occurrenceIndex = findAllIndices(before, removedText).length;
     }
 
-    // c) classify insertion type
+    // 3) Classify insertion type
     const ins = insertedText;
     const trimmedIns = ins.trim();
-    const isSentenceAddition = /^[^.?!;:]+[.?!;:]\s*$/.test(trimmedIns);
+    const isSentenceAddition  = /^[^.?!;:]+[.?!;:]\s*$/.test(trimmedIns);
     const isParagraphAddition = ins.includes("\n");
     const isInSentenceInsertion =
       removedLen === 0 &&
@@ -161,32 +169,55 @@ export default function EditPermutationUI() {
       !isSentenceAddition &&
       !isParagraphAddition;
 
-    // d) automatic conditions for mods
+    // 4) Automatic conditions for modifications
     let autoConds = [];
     if (removedLen > 0 || isInSentenceInsertion) {
       autoConds = getAutoConditions(oldText, offset, removedLen);
     }
 
-    // e) for in-sentence inserts, record sentence + relative offset
-    let sentenceInfo = null;
+    // 5) For in-sentence insertions
+    let sentenceInfo   = null;
     let relativeOffset = null;
     if (isInSentenceInsertion) {
-      sentenceInfo = findSentenceBounds(oldText, offset);
+      sentenceInfo   = findSentenceBounds(oldText, offset);
       relativeOffset = offset - sentenceInfo.start;
     }
 
-    // f) for pure sentence/paragraph adds: compute effectiveOffset by patch-transform
-    let effectiveOffset = offset;
+    // 6) For pure sentence/paragraph additions: record paragraph & sentence index
+    let pureAddParaIndex = null;
+    let pureAddSentIndex = null;
     if (!isInSentenceInsertion && (isSentenceAddition || isParagraphAddition)) {
-      suggestionHistory.forEach((h) => {
-        if (h.offset < offset) {
-          effectiveOffset += (h.insertedLen - h.removedLen);
+      const paras = oldText.split("\n");
+      let cumLen = 0;
+      for (let pi = 0; pi < paras.length; pi++) {
+        const para = paras[pi];
+        const nextCum = cumLen + para.length;
+        if (offset <= nextCum) {
+          pureAddParaIndex = pi;
+          if (isSentenceAddition) {
+            // figure out sentence‐list in this paragraph
+            const sentences = splitIntoSentences(para);
+            const paraOffset = offset - cumLen;
+            // count sentences whose end < paraOffset
+            let count = 0;
+            for (const s of sentences) {
+              if (s.end < paraOffset) count++;
+            }
+            pureAddSentIndex = count;
+          }
+          break;
         }
-      });
+        cumLen = nextCum + 1; // +1 for the newline
+      }
+      // If offset beyond last paragraph, append:
+      if (pureAddParaIndex === null) {
+        pureAddParaIndex = paras.length;
+        pureAddSentIndex = 0;
+      }
     }
 
+    // 7️⃣ Build suggestion
     const suggestion = {
-      offset,
       removedLen,
       removedText,
       insertedText,
@@ -195,15 +226,16 @@ export default function EditPermutationUI() {
       isInSentenceInsertion,
       sentenceInfo,
       relativeOffset,
-      effectiveOffset,
+      pureAddParaIndex,
+      pureAddSentIndex,
     };
 
-    // g) apply to every draft
+    // 8️⃣ Apply to every draft
     const newSet = new Set(drafts);
-    const edges = [];
+    const edges  = [];
 
     drafts.forEach((d) => {
-      // check all conditions
+      // check conditions
       if (
         suggestion.conditionParts.length > 0 &&
         !suggestion.conditionParts.every((p) => d.includes(p))
@@ -211,56 +243,65 @@ export default function EditPermutationUI() {
         return;
       }
 
-      let newDraft = d;
+      let newD = d;
 
-      // removal/replacement
+      // (a) removal / replacement
       if (suggestion.removedLen > 0) {
         const idxs = findAllIndices(d, suggestion.removedText);
         if (idxs.length <= suggestion.occurrenceIndex) return;
         const pos = idxs[suggestion.occurrenceIndex];
-        newDraft =
+        newD =
           d.slice(0, pos) +
           suggestion.insertedText +
           d.slice(pos + suggestion.removedLen);
       }
-      // in‐sentence insertion
+      // (b) in-sentence insertion
       else if (suggestion.isInSentenceInsertion) {
-        const { text: sentText } = suggestion.sentenceInfo;
+        const { text: sentText, start: sStart } = suggestion.sentenceInfo;
         const idx = d.indexOf(sentText);
         if (idx === -1) return;
         const insertAt = idx + suggestion.relativeOffset;
-        newDraft =
+        newD =
           d.slice(0, insertAt) +
           suggestion.insertedText +
           d.slice(insertAt);
       }
-      // pure sentence/paragraph add
-      else if (suggestion.insertedText.length > 0) {
-        const at = Math.min(suggestion.effectiveOffset, d.length);
-        newDraft =
-          d.slice(0, at) +
-          suggestion.insertedText +
-          d.slice(at);
+      // (c) pure sentence addition
+      else if (isSentenceAddition) {
+        const paras = d.split("\n");
+        // ensure index in range
+        const pi = Math.min(suggestion.pureAddParaIndex, paras.length - 1);
+        const para = paras[pi];
+        const sentences = splitIntoSentences(para);
+        // build new paragraph
+        const si = suggestion.pureAddSentIndex ?? sentences.length;
+        const before = sentences.slice(0, si).map(s => s.text).join("");
+        const after  = sentences.slice(si).map(s => s.text).join("");
+        paras[pi] = before + suggestion.insertedText + after;
+        newD = paras.join("\n");
+      }
+      // (d) pure paragraph addition
+      else if (isParagraphAddition) {
+        const paras = d.split("\n");
+        const pi = Math.min(suggestion.pureAddParaIndex, paras.length);
+        paras.splice(pi, 0, suggestion.insertedText);
+        newD = paras.join("\n");
       }
 
-      if (newDraft !== d && !newSet.has(newDraft)) {
-        newSet.add(newDraft);
-        edges.push({ from: d, to: newDraft });
+      if (newD !== d && !newSet.has(newD)) {
+        newSet.add(newD);
+        edges.push({ from: d, to: newD });
       }
     });
 
-    // h) commit
+    // 9️⃣ Commit & reset
     saveHistory(Array.from(newSet), edges);
     setConditionParts([]);
     setHighlighted([]);
     setCurrentEditText(selectedDraft);
-    setSuggestionHistory((h) => [
-      ...h,
-      { offset, removedLen, insertedLen: insertedText.length },
-    ]);
   }
 
-  // 6️⃣ Manual conditions
+  // ─── Manual conditions ─────────────────────────────────────────────────────
   function handleSelect() {
     const sel = window.getSelection();
     if (!sel || !sel.toString()) return;
@@ -278,7 +319,7 @@ export default function EditPermutationUI() {
     sel.removeAllRanges();
   }
 
-  // 7️⃣ Highlight rendering
+  // ─── Highlight rendering ───────────────────────────────────────────────────
   function renderWithHighlights(text) {
     if (!highlighted.length) return text;
     let segments = [text];
@@ -296,12 +337,11 @@ export default function EditPermutationUI() {
     return segments;
   }
 
-  // 8️⃣ UI
+  // ─── JSX ───────────────────────────────────────────────────────────────────
   return (
     <div className="p-4 space-y-6 text-gray-800">
       <h1 className="text-2xl font-bold">Edit Permutation UI</h1>
-
-      {/* STEP 1: Initial Draft */}
+      {/* Initial Draft */}
       <div className="space-y-2">
         <label className="block font-medium">Initial Draft:</label>
         <textarea
@@ -343,7 +383,7 @@ export default function EditPermutationUI() {
             </ul>
           </div>
 
-          {/* Free-style Edit */}
+          {/* Free‐style Edit */}
           <div>
             <h2 className="font-semibold">Selected Draft (edit freely):</h2>
             <textarea
@@ -392,3 +432,4 @@ export default function EditPermutationUI() {
     </div>
   );
 }
+
