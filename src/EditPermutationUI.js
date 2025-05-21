@@ -12,6 +12,7 @@ export default function EditPermutationUI() {
   const [history, setHistory]                 = useState([]);
   const [redoStack, setRedoStack]             = useState([]);
   const [graphEdges, setGraphEdges]           = useState([]);
+  // Now record removedText and insertedText for each past suggestion:
   const [suggestionHistory, setSuggestionHistory] = useState([]);
   const draftBoxRef = useRef();
 
@@ -34,7 +35,8 @@ export default function EditPermutationUI() {
 
   function undo() {
     if (!history.length) return;
-    setSuggestionHistory((h) => h.slice(0, -1)); // pop last suggestion
+    // pop last suggestion
+    setSuggestionHistory((h) => h.slice(0, -1));
     const prev = history[history.length - 1];
     setRedoStack((r) => [drafts, ...r]);
     setHistory((h) => h.slice(0, -1));
@@ -47,7 +49,7 @@ export default function EditPermutationUI() {
     setHistory((h) => [...h, drafts]);
     setRedoStack((r) => r.slice(1));
     setDrafts(next);
-    // (Redo of suggestionHistory can be tricky; omitted for brevity)
+    // for brevity, we’re not replaying suggestionHistory on redo
   }
 
   // ─── Initialize ────────────────────────────────────────────────────────────
@@ -108,10 +110,10 @@ export default function EditPermutationUI() {
     const ps = b + 1, pe = a === -1 ? text.length : a;
     const para = text.slice(ps, pe);
 
-    const sents = splitIntoSentences(para);
     let cum = ps;
-    for (const s of sents) {
-      const absStart = cum + s.start, absEnd = cum + s.end;
+    for (const s of splitIntoSentences(para)) {
+      const absStart = cum + s.start;
+      const absEnd   = cum + s.end;
       if (offset >= absStart && offset <= absEnd) {
         return { text: para.slice(s.start, s.end), start: absStart, end: absEnd };
       }
@@ -119,12 +121,12 @@ export default function EditPermutationUI() {
     return { text: para, start: ps, end: pe };
   }
 
-  // ─── Core: apply edit across all drafts ────────────────────────────────────
+  // ─── Core: apply edit across drafts ─────────────────────────────────────────
   function applyEdit() {
     const oldText = selectedDraft;
     const newText = currentEditText;
 
-    // 1) Diff via LCP/LCS
+    // 1) Diff via longest common prefix/suffix
     let prefixLen = 0;
     const maxP = Math.min(oldText.length, newText.length);
     while (prefixLen < maxP && oldText[prefixLen] === newText[prefixLen]) {
@@ -153,8 +155,8 @@ export default function EditPermutationUI() {
     }
 
     // 3) Classify the edit
-    const ti = insertedText.trim();
-    const isSentenceAddition  = /^[^.?!;:]+[.?!;:]\s*$/.test(ti);
+    const trimIns = insertedText.trim();
+    const isSentenceAddition  = /^[^.?!;:]+[.?!;:]\s*$/.test(trimIns);
     const isParagraphAddition = insertedText.includes("\n");
     const isInSentenceInsertion =
       removedLen === 0 &&
@@ -165,14 +167,14 @@ export default function EditPermutationUI() {
     // 4) AUTOMATIC CONDITIONS
     let autoConds = [];
     if (removedLen > 0) {
-      // removals: only require the literal snippet
+      // removals: only require the snippet
       autoConds = [removedText];
     } else if (isInSentenceInsertion) {
-      // in-sentence inserts: require the sentence you edited
+      // in-sentence inserts: require the sentence
       autoConds = getAutoConditions(oldText, offset, removedLen);
     }
 
-    // 5) In-sentence insertion metadata
+    // 5) Record metadata for in-sentence
     let sentenceInfo   = null;
     let relativeOffset = null;
     if (isInSentenceInsertion) {
@@ -180,12 +182,16 @@ export default function EditPermutationUI() {
       relativeOffset = offset - sentenceInfo.start;
     }
 
-    // 6) Compute effectiveOffset for pure additions via patch-transform
+    // 6) Compute effectiveOffset for pure adds—**branch‐aware** patch transform
     let effectiveOffset = offset;
     if (!isInSentenceInsertion && (isSentenceAddition || isParagraphAddition)) {
       for (const h of suggestionHistory) {
         if (h.offset < offset) {
-          effectiveOffset += h.insertedLen - h.removedLen;
+          // for removal suggestions, shift only if this branch lost that snippet
+          if (h.removedLen > 0) {
+            if (!oldText && /* no action */ false) {}
+            // we'll handle per‐branch below
+          }
         }
       }
     }
@@ -200,7 +206,8 @@ export default function EditPermutationUI() {
       isInSentenceInsertion,
       sentenceInfo,
       relativeOffset,
-      effectiveOffset,
+      // for pure adds:
+      offset,
     };
 
     // 7) Apply to every draft
@@ -239,9 +246,27 @@ export default function EditPermutationUI() {
           suggestion.insertedText +
           d.slice(at);
       }
-      // c) pure addition at effectiveOffset
+      // c) pure addition—branch‐aware transform
       else if (suggestion.insertedText.length > 0) {
-        const at = Math.min(suggestion.effectiveOffset, d.length);
+        // compute branch‐effective offset:
+        let branchOffset = suggestion.offset;
+        for (const h of suggestionHistory) {
+          if (h.offset < suggestion.offset) {
+            if (h.removedLen > 0) {
+              // removal suggestion: check if removal applied in this branch
+              if (!d.includes(h.removedText)) {
+                branchOffset -= h.removedLen;
+              }
+            }
+            if (h.insertedText) {
+              // addition suggestion: check if insertion applied
+              if (d.includes(h.insertedText)) {
+                branchOffset += h.insertedText.length;
+              }
+            }
+          }
+        }
+        const at = Math.min(branchOffset, d.length);
         newDraft =
           d.slice(0, at) +
           suggestion.insertedText +
@@ -254,18 +279,23 @@ export default function EditPermutationUI() {
       }
     }
 
-    // 8) Commit & record this suggestion for future offsets
+    // 8) Commit & record this suggestion
     saveHistory(Array.from(newSet), edges);
     setConditionParts([]);
     setHighlighted([]);
     setCurrentEditText(selectedDraft);
     setSuggestionHistory((h) => [
       ...h,
-      { offset, removedLen, insertedLen: insertedText.length },
+      { 
+        offset, 
+        removedLen, 
+        removedText, 
+        insertedText: suggestion.insertedText 
+      }
     ]);
   }
 
-  // ─── Manual conditions (Ctrl+drag) ────────────────────────────────────────
+  // ─── Manual conditions ─────────────────────────────────────────────────────
   function handleSelect() {
     const sel = window.getSelection();
     if (!sel || !sel.toString()) return;
@@ -305,7 +335,7 @@ export default function EditPermutationUI() {
   return (
     <div className="p-4 space-y-6 text-gray-800">
       <h1 className="text-2xl font-bold">Edit Permutation UI</h1>
-
+      
       {/* Initial Draft */}
       <div className="space-y-2">
         <label className="block font-medium">Initial Draft:</label>
@@ -338,65 +368,8 @@ export default function EditPermutationUI() {
                     setHighlighted([]);
                     setConditionParts([]);
                   }}
-                  className={`px-2 py-1 rounded cursor-pointer ${
-                    d === selectedDraft ? "bg-blue-200" : "bg-gray-100"
-                  }`}
-                >
-                  {d}
-                </li>
-              ))}
-            </ul>
-          </div>
+                  className={`px
 
-          {/* Free-Style Edit */}
-          <div>
-            <h2 className="font-semibold">Selected Draft (edit freely):</h2>
-            <textarea
-              ref={draftBoxRef}
-              onMouseUp={handleSelect}
-              className="w-full p-2 border rounded bg-white whitespace-pre-wrap min-h-[80px]"
-              value={currentEditText}
-              onChange={(e) => setCurrentEditText(e.target.value)}
-            />
-            <div className="text-sm text-gray-600">
-              Conditions:{" "}
-              {conditionParts.length ? conditionParts.join(", ") : "(none)"}
-            </div>
-            <div className="space-x-2 mt-2">
-              <button
-                className="bg-blue-600 text-white px-4 py-2 rounded"
-                onClick={applyEdit}
-              >
-                Submit Edit
-              </button>
-              <button
-                className="bg-gray-200 px-4 py-2 rounded"
-                onClick={undo}
-              >
-                Undo (Ctrl+Z)
-              </button>
-              <button
-                className="bg-gray-200 px-4 py-2 rounded"
-                onClick={redo}
-              >
-                Redo (Ctrl+Y)
-              </button>
-            </div>
-          </div>
-
-          {/* Version Graph */}
-          <div>
-            <h2 className="font-semibold mt-6">Version Graph:</h2>
-            <VersionGraph
-              edges={graphEdges}
-              onSelectDraft={setSelectedDraft}
-            />
-          </div>
-        </>
-      )}
-    </div>
-  );
-}
 
 
 
