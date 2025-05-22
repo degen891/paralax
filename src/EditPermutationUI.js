@@ -155,7 +155,7 @@ export default function EditPermutationUI() {
 
       if (removedLen > 0) {
         // removal by ID sequence
-        const idSeq = autoConds[0];
+        const idSeq = combinedConds[0];
         const positions = findIdSeqPositions(dArr, idSeq);
         positions.forEach(pos => {
           let updated = [...dArr.slice(0, pos), ...dArr.slice(pos + idSeq.length)];
@@ -165,7 +165,7 @@ export default function EditPermutationUI() {
 
       if (insertedText) {
         // insertion at selected condition ID sequences
-        const idSeqs = conditionParts.length ? conditionParts : autoConds;
+        const idSeqs = combinedConds;
         idSeqs.forEach(idSeq => {
           const positions = findIdSeqPositions(dArr, idSeq);
           positions.forEach(pos => {
@@ -180,7 +180,6 @@ export default function EditPermutationUI() {
         });
       }
 
-      // collect new drafts
       updateds.forEach(updated => {
         const key = updated.map(c => c.id).join(",");
         if (!seen.has(key)) {
@@ -249,7 +248,7 @@ export default function EditPermutationUI() {
         <label>Initial Draft:</label>
         <textarea
           value={defaultDraft}
-          onChange={e => setDefaultEdition(e.target.value)}
+          onChange={e => setDefaultDraft(e.target.value)}
           className="w-full p-2 border rounded"
           placeholder="Type starting text…"
         />
@@ -295,6 +294,7 @@ export default function EditPermutationUI() {
     </div>
   );
 }
+
 
 
 
