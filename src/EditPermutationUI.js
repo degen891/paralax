@@ -124,36 +124,30 @@ export default function EditPermutationUI() {
     const oldText = charArrayToString(oldArr);
     const newText = currentEditText;
 
-    // compute diff boundaries
+    // Compute diff boundaries
     let prefixLen = 0;
     const maxPref = Math.min(oldText.length, newText.length);
     while (prefixLen < maxPref && oldText[prefixLen] === newText[prefixLen]) prefixLen++;
     let suffixLen = 0;
-    while (suffixLen < oldText.length - prefixLen && suffixLen < newText.length - prefixLen &&
-           oldText[oldText.length - 1 - suffixLen] === newText[newText.length - 1 - suffixLen]) suffixLen++;
+    while (
+      suffixLen < oldText.length - prefixLen &&
+      suffixLen < newText.length - prefixLen &&
+      oldText[oldText.length - 1 - suffixLen] === newText[newText.length - 1 - suffixLen]
+    ) suffixLen++;
 
     const removedLen = oldText.length - prefixLen - suffixLen;
+    // ID sequence for removed segment, if any
     const removedIds = removedLen > 0 ? oldArr.slice(prefixLen, prefixLen + removedLen).map(c => c.id) : [];
     const insertedText = newText.slice(prefixLen, newText.length - suffixLen);
-
-    // Determine condition ID sequences: user-selected or auto-derived on removal
-    const condSeqs = conditionParts.length
-      ? conditionParts
-      : (removedIds.length
-          ? [removedIds]
-          : getAutoConditionsIds(oldArr, prefixLen, removedLen));
 
     const newDraftsArr = [...drafts];
     const newEdges = [];
     const seen = new Set(newDraftsArr.map(d => d.map(c => c.id).join(",")));
 
     drafts.forEach(dArr => {
-      // ensure conditions all satisfied by ID
-      if (!condSeqs.every(seq => findIdSeqPositions(dArr, seq).length > 0)) return;
-
       const variants = [];
 
-      // REMOVAL variants
+      // Removals: always by exact removedIds
       if (removedIds.length) {
         findIdSeqPositions(dArr, removedIds).forEach(pos => {
           variants.push([
@@ -163,7 +157,49 @@ export default function EditPermutationUI() {
         });
       }
 
-      // INSERTION variants
+      // Insertions
+      if (insertedText) {
+        const insArr = Array.from(insertedText).map(ch => ({ id: generateCharId(), char: ch }));
+        if (removedLen === 0) {
+          // Pure insertion: insert at prefixLen
+          variants.push([
+            ...dArr.slice(0, prefixLen),
+            ...insArr,
+            ...dArr.slice(prefixLen)
+          ]);
+        } else {
+          // Insertion after removal positions: only where removedIds were
+          findIdSeqPositions(dArr, removedIds).forEach(pos => {
+            variants.push([
+              ...dArr.slice(0, pos),
+              ...insArr,
+              ...dArr.slice(pos)
+            ]);
+          });
+        }
+      }
+
+      // Commit unique variants
+      variants.forEach(updated => {
+        const key = updated.map(c => c.id).join(",");
+        if (!seen.has(key)) {
+          seen.add(key);
+          newDraftsArr.push(updated);
+          newEdges.push({ from: dArr, to: updated });
+        }
+      });
+    });
+
+    if (newEdges.length) {
+      saveHistory(newDraftsArr, newEdges);
+      setSelectedDraft(newDraftsArr[newDraftsArr.length - 1]);
+    }
+
+    // Clear conditions
+    setConditionParts([]);
+    setHighlightedIds([]);
+  }
+// INSERTION variants
       if (insertedText) {
         condSeqs.forEach(seq => {
           findIdSeqPositions(dArr, seq).forEach(pos => {
@@ -298,6 +334,7 @@ export default function EditPermutationUI() {
     </div>
   );
 }
+
 
 
 
