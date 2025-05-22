@@ -12,35 +12,35 @@ function charArrayToString(arr) {
   return arr.map(c => c.char).join("");
 }
 
-// Find all positions where an ID sequence occurs in a CharObj[]
+// Find all starting indices where an ID sequence occurs in a CharObj[]
 function findIdSeqPositions(arr, idSeq) {
   const positions = [];
   for (let i = 0; i + idSeq.length <= arr.length; i++) {
-    const sliceIds = arr.slice(i, i + idSeq.length).map(c => c.id);
-    if (sliceIds.join(",") === idSeq.join(",")) positions.push(i);
+    const sliceIds = arr.slice(i, i + idSeq.length).map(c => c.id).join(",");
+    if (sliceIds === idSeq.join(",")) positions.push(i);
   }
   return positions;
 }
 
-// Auto-conditions based on sentence context, returning ID arrays
+// Auto-conditions: return ID arrays for containing sentence/paragraph
 function getAutoConditionsIds(arr, offset, removedLen) {
   const text = charArrayToString(arr);
   const beforePara = text.lastIndexOf("\n", offset - 1);
   const afterPara = text.indexOf("\n", offset + removedLen);
-  const paraStart = beforePara + 1;
-  const paraEnd = afterPara === -1 ? text.length : afterPara;
-  const paragraph = text.slice(paraStart, paraEnd);
+  const start = beforePara + 1;
+  const end = afterPara === -1 ? text.length : afterPara;
+  const paragraph = text.slice(start, end);
 
   const regex = /[^.?!;:]+[.?!;:]/g;
   let match;
   while ((match = regex.exec(paragraph)) !== null) {
-    const start = paraStart + match.index;
-    const end = start + match[0].length;
-    if (!(offset + removedLen <= start || offset >= end)) {
-      return [arr.slice(start, end).map(c => c.id)];
+    const s = start + match.index;
+    const e = s + match[0].length;
+    if (!(offset + removedLen <= s || offset >= e)) {
+      return [arr.slice(s, e).map(c => c.id)];
     }
   }
-  return [arr.slice(paraStart, paraEnd).map(c => c.id)];
+  return [arr.slice(start, end).map(c => c.id)];
 }
 
 export default function EditPermutationUI() {
@@ -49,21 +49,25 @@ export default function EditPermutationUI() {
   const [drafts, setDrafts] = useState([]);
   const [selectedDraft, setSelectedDraft] = useState([]);
   const [currentEditText, setCurrentEditText] = useState("");
-  const [conditionParts, setConditionParts] = useState([]); // [[id,...], ...]
+  const [conditionParts, setConditionParts] = useState([]); // array of ID arrays
   const [highlightedIds, setHighlightedIds] = useState([]);
   const [history, setHistory] = useState([]);
   const [redoStack, setRedoStack] = useState([]);
   const [graphEdges, setGraphEdges] = useState([]);
   const draftBoxRef = useRef(null);
 
-  // Sync currentEditText when selectedDraft changes
+  const stringDrafts = drafts.map(arr => charArrayToString(arr));
+  const stringEdges = graphEdges.map(({ from, to }) => ({
+    from: from ? charArrayToString(from) : null,
+    to: charArrayToString(to),
+  }));
+
+  // Sync edit buffer when selection changes
   useEffect(() => {
-    if (selectedDraft && selectedDraft.length > 0) {
-      setCurrentEditText(charArrayToString(selectedDraft));
-    }
+    setCurrentEditText(charArrayToString(selectedDraft));
   }, [selectedDraft]);
 
-  // Undo/Redo keyboard
+  // Undo/Redo keyboard handlers
   useEffect(() => {
     const handleKey = e => {
       if (e.ctrlKey && e.key === "z") { e.preventDefault(); undo(); }
@@ -73,13 +77,13 @@ export default function EditPermutationUI() {
     return () => window.removeEventListener("keydown", handleKey);
   }, [history, redoStack, drafts]);
 
+  // History management
   function saveHistory(newDrafts, newEdges) {
     setHistory(h => [...h, drafts]);
     setRedoStack([]);
     setDrafts(newDrafts);
     setGraphEdges(g => [...g, ...newEdges]);
   }
-
   function undo() {
     if (!history.length) return;
     const prev = history[history.length - 1];
@@ -88,7 +92,6 @@ export default function EditPermutationUI() {
     setDrafts(prev);
     setSelectedDraft(prev[0] || []);
   }
-
   function redo() {
     if (!redoStack.length) return;
     const next = redoStack[0];
@@ -98,6 +101,7 @@ export default function EditPermutationUI() {
     setSelectedDraft(next[0] || []);
   }
 
+  // Initialize draft
   function initializeDraft() {
     if (!defaultDraft.trim()) return;
     const arr = Array.from(defaultDraft).map(ch => ({ id: generateCharId(), char: ch }));
@@ -110,12 +114,13 @@ export default function EditPermutationUI() {
     setHighlightedIds([]);
   }
 
+  // Apply user edit
   function applyEdit() {
     const oldArr = selectedDraft;
     const oldText = charArrayToString(oldArr);
     const newText = currentEditText;
 
-    // Diff boundaries
+    // Compute prefix/suffix
     let prefixLen = 0;
     const maxPref = Math.min(oldText.length, newText.length);
     while (prefixLen < maxPref && oldText[prefixLen] === newText[prefixLen]) prefixLen++;
@@ -127,29 +132,37 @@ export default function EditPermutationUI() {
     ) suffixLen++;
 
     const removedLen = oldText.length - prefixLen - suffixLen;
-    const removedIds = removedLen > 0 ? oldArr.slice(prefixLen, prefixLen + removedLen).map(c => c.id) : [];
+    const removedIds = removedLen > 0
+      ? oldArr.slice(prefixLen, prefixLen + removedLen).map(c => c.id)
+      : [];
     const insertedText = newText.slice(prefixLen, newText.length - suffixLen);
 
+    // Determine conditions
     const useParts = conditionParts.length > 0;
     const condSeqs = useParts
       ? conditionParts
-      : removedLen > 0
-        ? [removedIds]
-        : getAutoConditionsIds(oldArr, prefixLen, removedLen);
+      : (removedLen > 0
+          ? [removedIds]
+          : getAutoConditionsIds(oldArr, prefixLen, removedLen));
 
     const newDraftsArr = [...drafts];
     const newEdges = [];
     const seen = new Set(newDraftsArr.map(d => d.map(c => c.id).join(",")));
 
     drafts.forEach(dArr => {
+      // Only if all conditions present
       if (!condSeqs.every(seq => findIdSeqPositions(dArr, seq).length > 0)) return;
+
       const variants = [];
 
       // Removals
       if (removedLen > 0) {
         condSeqs.forEach(seq => {
           findIdSeqPositions(dArr, seq).forEach(pos => {
-            variants.push([...dArr.slice(0, pos), ...dArr.slice(pos + seq.length)]);
+            variants.push([
+              ...dArr.slice(0, pos),
+              ...dArr.slice(pos + seq.length)
+            ]);
           });
         });
       }
@@ -168,6 +181,7 @@ export default function EditPermutationUI() {
         });
       }
 
+      // Add unique variants
       variants.forEach(updated => {
         const key = updated.map(c => c.id).join(",");
         if (!seen.has(key)) {
@@ -180,13 +194,15 @@ export default function EditPermutationUI() {
 
     if (newEdges.length) {
       saveHistory(newDraftsArr, newEdges);
-      setSelectedDraft(newDraftsArr[newDraftsArr.length - 1]);
+      const last = newDraftsArr[newDraftsArr.length - 1];
+      setSelectedDraft(last);
     }
 
     setConditionParts([]);
     setHighlightedIds([]);
   }
 
+  // Capture selection
   function handleSelect() {
     const sel = window.getSelection();
     if (!sel || sel.isCollapsed || !draftBoxRef.current) return;
@@ -213,6 +229,7 @@ export default function EditPermutationUI() {
     sel.removeAllRanges();
   }
 
+  // Render draft with spans keyed by ID
   function renderEditableDraft(arr) {
     return (
       <div
@@ -261,22 +278,29 @@ export default function EditPermutationUI() {
           <div>
             <h2 className="text-xl font-semibold">All Drafts:</h2>
             <ul className="flex flex-wrap gap-2">
-              {drafts.map((arr, i) => (
-                <li
-                  key={i}
-                  onClick={() => { setSelectedDraft(arr); setConditionParts([]); setHighlightedIds([]); }}
-                  className={`px-2 py-1 rounded cursor-pointer ${drafts[i] === selectedDraft ? 'bg-blue-200' : 'bg-gray-100'}`}
-                >
-                  {charArrayToString(arr)}
-                </li>
-              ))}
+              {drafts.map(arr => {
+                const key = arr.map(c => c.id).join(",");
+                return (
+                  <li
+                    key={key}
+                    onClick={() => setSelectedDraft(arr)}
+                    className={`px-2 py-1 rounded cursor-pointer ${arr === selectedDraft ? 'bg-blue-200' : 'bg-gray-100'}`}
+                  >
+                    {charArrayToString(arr)}
+                  </li>
+                );
+              })}
             </ul>
           </div>
 
           <div>
             <h2 className="text-xl font-semibold">Selected Draft (edit freely):</h2>
             {renderEditableDraft(selectedDraft)}
-            <div className="mt-2">Conditions: {conditionParts.length ? conditionParts.map(ids => charArrayToString(selectedDraft.filter(c => ids.includes(c.id)))).join(', ') : '(none)'}</div>
+            <div className="mt-2">
+              Conditions: {conditionParts.length
+                ? conditionParts.map(ids => charArrayToString(selectedDraft.filter(c => ids.includes(c.id)))).join(', ')
+                : '(none)'}
+            </div>
             <div className="space-x-2 mt-4">
               <button onClick={applyEdit} className="bg-blue-600 text-white px-4 py-2 rounded">Submit Edit</button>
               <button onClick={undo} className="bg-gray-200 px-4 py-2 rounded">Undo (Ctrl+Z)</button>
@@ -287,10 +311,10 @@ export default function EditPermutationUI() {
           <div>
             <h2 className="text-xl font-semibold">Version Graph:</h2>
             <VersionGraph
-              drafts={drafts.map(arr => charArrayToString(arr))}
-              edges={graphEdges.map(({ from, to }) => ({ from: from ? charArrayToString(from) : null, to: charArrayToString(to) }))}
+              drafts={stringDrafts}
+              edges={stringEdges}
               onNodeClick={text => {
-                const idx = drafts.map(arr => charArrayToString(arr)).indexOf(text);
+                const idx = stringDrafts.indexOf(text);
                 if (idx >= 0) setSelectedDraft(drafts[idx]);
               }}
             />
@@ -300,6 +324,7 @@ export default function EditPermutationUI() {
     </div>
   );
 }
+
 
 
 
