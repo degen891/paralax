@@ -160,16 +160,6 @@ export default function EditPermutationUI() {
 
     const combinedConds = [...autoCondsIds, ...conditionParts];
 
-    // Determine occurrence for removals
-    let occurrenceIndex = 0;
-    if (removedLen > 0) {
-      const beforeArr = oldArr.slice(0, offset);
-      occurrenceIndex = findAllIndices(beforeArr, removedText).length;
-    }
-
-    // Build suggestion descriptor if needed
-    const suggestion = { offset, removedLen, removedText, insertedText, occurrenceIndex, conditionIds: combinedConds };
-
     // Generate permutations
     const newDraftsArr = [...drafts];
     const newEdges = [];
@@ -177,14 +167,15 @@ export default function EditPermutationUI() {
 
     drafts.forEach(dArr => {
       // Condition check by IDs
-      if (combinedConds.length && !combinedConds.every(condIds => condIds.every(id => dArr.some(c => c.id === id)))) {
+      if (combinedConds.length &&
+          !combinedConds.every(condIds => condIds.every(id => dArr.some(c => c.id === id)))) {
         return;
       }
       let updated = [...dArr];
 
       if (removedLen > 0) {
         const positions = findAllIndices(dArr, removedText);
-        const pos = positions[suggestion.occurrenceIndex];
+        const pos = positions[combinedConds.length ? combinedConds.length-1 : 0];
         if (pos === undefined) return;
         const before = dArr.slice(0, pos);
         const after = dArr.slice(pos + removedLen);
@@ -208,7 +199,6 @@ export default function EditPermutationUI() {
     saveHistory(newDraftsArr, newEdges);
     setConditionParts([]);
     setHighlightedIds([]);
-    setCurrentEditText(charArrayToString(selectedDraft));
   }
 
   // Collect selected char IDs from contentEditable spans
@@ -217,16 +207,13 @@ export default function EditPermutationUI() {
     if (!sel || sel.isCollapsed) return;
     const range = sel.getRangeAt(0);
 
-    // Walk through span elements
     const spanIds = [];
     const walker = document.createTreeWalker(
       draftDivRef.current,
       NodeFilter.SHOW_ELEMENT,
       {
         acceptNode(node) {
-          return node.tagName === 'SPAN' && node.dataset.id
-            ? NodeFilter.FILTER_ACCEPT
-            : NodeFilter.FILTER_SKIP;
+          return node.tagName === 'SPAN' && node.dataset.id ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_SKIP;
         }
       }
     );
@@ -238,9 +225,7 @@ export default function EditPermutationUI() {
       if (
         range.compareBoundaryPoints(Range.END_TO_START, spanRange) < 0 ||
         range.compareBoundaryPoints(Range.START_TO_END, spanRange) > 0
-      ) {
-        continue;
-      }
+      ) continue;
       spanIds.push(span.dataset.id);
     }
     if (!spanIds.length) return;
@@ -257,15 +242,14 @@ export default function EditPermutationUI() {
         ref={draftDivRef}
         contentEditable
         suppressContentEditableWarning
+        onInput={e => setCurrentEditText(e.currentTarget.textContent)}
         onMouseUp={handleSelect}
         className="w-full p-2 border rounded whitespace-pre-wrap min-h-[80px] cursor-text"
       >
         {arr.map(c => (
-          <span
-            key={c.id}
-            data-id={c.id}
-            className={highlightedIds.includes(c.id) ? 'bg-yellow-200' : ''}
-          >{c.char}</span>
+          <span key={c.id} data-id={c.id} className={highlightedIds.includes(c.id) ? 'bg-yellow-200' : ''}>
+            {c.char}
+          </span>
         ))}
       </div>
     );
@@ -284,10 +268,7 @@ export default function EditPermutationUI() {
           className="w-full p-2 border rounded"
           placeholder="Type starting text…"
         />
-        <button
-          onClick={initializeDraft}
-          className="bg-green-600 text-white px-4 py-2 rounded"
-        >
+        <button onClick={initializeDraft} className="bg-green-600 text-white px-4 py-2 rounded">
           Set Initial Draft
         </button>
       </div>
@@ -307,8 +288,9 @@ export default function EditPermutationUI() {
                     setConditionParts([]);
                     setHighlightedIds([]);
                   }}
-                  className={`px-2 py-1 rounded cursor-pointer ${drafts[i] === selectedDraft ? 'bg-blue-200' : 'bg-gray-100'}`}
-                >{text}</li>
+                  className={`px-2 py-1 rounded cursor-pointer ${drafts[i] === selectedDraft ? 'bg-blue-200' : 'bg-gray-100'}` }>
+                  {text}
+                </li>
               ))}
             </ul>
           </div>
@@ -327,12 +309,8 @@ export default function EditPermutationUI() {
               <button onClick={applyEdit} className="bg-blue-600 text-white px-4 py-2 rounded">
                 Submit Edit
               </button>
-              <button onClick={undo} className="bg-gray-200 px-4 py-2 rounded">
-                Undo (Ctrl+Z)
-              </button>
-              <button onClick={redo} className="bg-gray-200 px-4 py-2 rounded">
-                Redo (Ctrl+Y)
-              </button>
+              <button onClick={undo} className="bg-gray-200 px-4 py-2 rounded">Undo (Ctrl+Z)</button>
+              <button onClick={redo} className="bg-gray-200 px-4 py-2 rounded">Redo (Ctrl+Y)</button>
             </div>
           </div>
 
@@ -355,6 +333,7 @@ export default function EditPermutationUI() {
     </div>
   );
 }
+
 
 
 
