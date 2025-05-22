@@ -1,53 +1,38 @@
 import React, { useState, useEffect, useRef } from "react";
 import VersionGraph from "./VersionGraph";
 
-// Global counter to assign unique IDs to each character across all drafts
-type CharObj = { id: string; char: string };
-let globalCharCounter = 0;
-function generateCharId() {
-  return `char-${globalCharCounter++}`;
-}
-
 export default function EditPermutationUI() {
-  // Raw text for initial input
-  const [defaultDraftText, setDefaultDraftText] = useState("");
-  // Each draft is now an array of CharObj
-  const [drafts, setDrafts] = useState<CharObj[][]>([]);
-  const [selectedDraft, setSelectedDraft] = useState<CharObj[]>([]);
-  // Freeform editor remains a string
+  // 1️⃣ User-provided initial draft
+  const [defaultDraft, setDefaultDraft] = useState("");
+  const [drafts, setDrafts] = useState([]);
+  const [selectedDraft, setSelectedDraft] = useState("");
+
+  // 2️⃣ Free-style edit buffer
   const [currentEditText, setCurrentEditText] = useState("");
-  const [conditionParts, setConditionParts] = useState<string[]>([]);
-  const [highlighted, setHighlighted] = useState<string[]>([]);
 
-  // Undo/redo history of draft arrays
-  const [history, setHistory] = useState<CharObj[][][]>([]);
-  const [redoStack, setRedoStack] = useState<CharObj[][][]>([]);
-  // Version graph edges store references to arrays (identity preserved)
-  const [graphEdges, setGraphEdges] = useState<{ from: CharObj[] | null; to: CharObj[] }[]>([]);
+  // 3️⃣ Conditions & highlights
+  const [conditionParts, setConditionParts] = useState([]);
+  const [highlighted, setHighlighted] = useState([]);
 
-  const draftBoxRef = useRef<HTMLDivElement>(null);
+  // 4️⃣ History / redo for undo-redo
+  const [history, setHistory] = useState([]);
+  const [redoStack, setRedoStack] = useState([]);
 
-  // Helper: convert CharObj[] to string
-  function charArrayToString(arr: CharObj[]) {
-    return arr.map((c) => c.char).join("");
-  }
+  // 5️⃣ Version graph edges
+  const [graphEdges, setGraphEdges] = useState([]);
+  const draftBoxRef = useRef();
 
-  // --- Undo / Redo ---
+  // --- Undo / Redo via Ctrl+Z, Ctrl+Y ---
   useEffect(() => {
-    const handleKey = (e: KeyboardEvent) => {
-      if (e.ctrlKey && e.key === "z") {
-        e.preventDefault();
-        undo();
-      } else if (e.ctrlKey && e.key === "y") {
-        e.preventDefault();
-        redo();
-      }
+    const handleKey = (e) => {
+      if (e.ctrlKey && e.key === "z") undo();
+      if (e.ctrlKey && e.key === "y") redo();
     };
     window.addEventListener("keydown", handleKey);
     return () => window.removeEventListener("keydown", handleKey);
   }, [history, redoStack, drafts]);
 
-  function saveHistory(newDrafts: CharObj[][], newEdges: any[]) {
+  function saveHistory(newDrafts, newEdges) {
     setHistory((h) => [...h, drafts]);
     setRedoStack([]);
     setDrafts(newDrafts);
@@ -68,51 +53,92 @@ export default function EditPermutationUI() {
     setDrafts(next);
   }
 
-  // --- Initialize drafts from raw string ---
+  // --- Initialize drafts ---
   function initializeDraft() {
-    if (!defaultDraftText.trim()) return;
-    const arr = Array.from(defaultDraftText).map((ch) => ({
-      id: generateCharId(),
-      char: ch,
-    }));
-    setDrafts([arr]);
-    setSelectedDraft(arr);
-    setCurrentEditText(defaultDraftText);
-    setGraphEdges([{ from: null, to: arr }]);
+    if (!defaultDraft.trim()) return;
+    setDrafts([defaultDraft]);
+    setSelectedDraft(defaultDraft);
+    setCurrentEditText(defaultDraft);
+    setGraphEdges([{ from: null, to: defaultDraft }]);
     setHistory([]);
     setRedoStack([]);
   }
 
-  // --- Find all substring positions by char-array matching ---
-  function findAllIndices(arr: CharObj[], sub: string) {
-    const positions: number[] = [];
-    const base = charArrayToString(arr);
-    let idx = base.indexOf(sub);
-    while (idx !== -1) {
-      positions.push(idx);
-      idx = base.indexOf(sub, idx + 1);
+  // Helper: find all indices of `sub` in `str`
+  function findAllIndices(str, sub) {
+    const indices = [];
+    let i = str.indexOf(sub);
+    while (i !== -1) {
+      indices.push(i);
+      i = str.indexOf(sub, i + 1);
     }
-    return positions;
+    return indices;
   }
 
-  // The existing getAutoConditions and findSentenceBounds can remain unchanged,
-  // but internally call charArrayToString for text operations.
+  // --- Paragraph & sentence extraction for auto-conditions ---
+  function getAutoConditions(text, offset, removedLen) {
+    const beforePara = text.lastIndexOf("\n", offset - 1);
+    const afterPara = text.indexOf("\n", offset + removedLen);
+    const paraStart = beforePara + 1;
+    const paraEnd = afterPara === -1 ? text.length : afterPara;
+    const paragraph = text.slice(paraStart, paraEnd);
 
-  // --- Apply an edit suggestion ---
+    // Expanded to include ?, !, ., ;, :
+    const sentenceRegex = /[^.?!;:]+[.?!;:]/g;
+    let match, sentences = [];
+    while ((match = sentenceRegex.exec(paragraph)) !== null) {
+      sentences.push({
+        text: match[0],
+        start: paraStart + match.index,
+        end: paraStart + match.index + match[0].length
+      });
+    }
+
+    const editStart = offset;
+    const editEnd = offset + removedLen;
+    for (let s of sentences) {
+      if (!(editEnd <= s.start || editStart >= s.end)) {
+        return [s.text.trim()];
+      }
+    }
+
+    return [paragraph.trim()];
+  }
+
+  // --- NEW: find the sentence bounds around an offset ---
+  function findSentenceBounds(text, offset) {
+    const beforePara = text.lastIndexOf("\n", offset - 1);
+    const afterPara = text.indexOf("\n", offset);
+    const paraStart = beforePara + 1;
+    const paraEnd = afterPara === -1 ? text.length : afterPara;
+    const paragraph = text.slice(paraStart, paraEnd);
+
+    // Expanded to include ?, !, ., ;, :
+    const sentenceRegex = /[^.?!;:]+[.?!;:]/g;
+    let match;
+    while ((match = sentenceRegex.exec(paragraph)) !== null) {
+      const start = paraStart + match.index;
+      const end = start + match[0].length;
+      if (offset >= start && offset <= end) {
+        return { text: match[0], start, end };
+      }
+    }
+    // fallback to whole paragraph
+    return { text: paragraph, start: paraStart, end: paraEnd };
+  }
+
+  // --- Free-style edit application with relative-offset insertions ---
   function applyEdit() {
-    const oldArr = selectedDraft;
-    const oldText = charArrayToString(oldArr);
+    const oldText = selectedDraft;
     const newText = currentEditText;
 
-    // 1) compute prefix & suffix lengths on text
+    // 1) compute diff by Longest Common Prefix/Suffix
     let prefixLen = 0;
     const maxPrefix = Math.min(oldText.length, newText.length);
-    while (
-      prefixLen < maxPrefix &&
-      oldText[prefixLen] === newText[prefixLen]
-    ) {
+    while (prefixLen < maxPrefix && oldText[prefixLen] === newText[prefixLen]) {
       prefixLen++;
     }
+
     let suffixLen = 0;
     while (
       suffixLen < oldText.length - prefixLen &&
@@ -124,127 +150,240 @@ export default function EditPermutationUI() {
     }
 
     const removedLen = oldText.length - prefixLen - suffixLen;
-    const removedText = oldText.slice(prefixLen, oldText.length - suffixLen);
     const insertedText = newText.slice(prefixLen, newText.length - suffixLen);
+    const removedText = oldText.slice(prefixLen, oldText.length - suffixLen);
     const offset = prefixLen;
 
-    // 2) determine which occurrence to remove, by ID-aware search
+    // 2) determine occurrenceIndex for removals
     let occurrenceIndex = 0;
     if (removedLen > 0) {
-      const beforeArr = oldArr.slice(0, offset);
-      occurrenceIndex = findAllIndices(beforeArr, removedText).length;
+      const before = oldText.slice(0, offset);
+      occurrenceIndex = findAllIndices(before, removedText).length;
     }
 
-    // 3) use existing logic to detect insertion types (unchanged)
-    // ... (omitted for brevity)
+    // 3) Detect new-sentence, new-paragraph, or in-sentence insertion
+    const ins = insertedText;
+    const trimmedIns = ins.trim();
+    // Expanded to include ?, !, ., ;, :
+    const isSentenceAddition = /^[^.?!;:]+[.?!;:]\s*$/.test(trimmedIns);
+    const isParagraphAddition = ins.includes("\n");
+    const isInSentenceInsertion =
+      removedLen === 0 &&
+      ins.length > 0 &&
+      !isSentenceAddition &&
+      !isParagraphAddition;
 
-    // Build suggestion object
+    // 4) AUTOMATIC CONDITIONS
+    let autoConds = [];
+    // removals and in-sentence modifications get auto-conds
+    if (removedLen > 0 || isInSentenceInsertion) {
+      autoConds = getAutoConditions(oldText, offset, removedLen);
+    }
+
+    // 5) For in-sentence insertions, record sentenceBounds + relativeOffset
+    let sentenceInfo = null;
+    let relativeOffset = null;
+    if (isInSentenceInsertion) {
+      sentenceInfo = findSentenceBounds(oldText, offset);
+      relativeOffset = offset - sentenceInfo.start;
+    }
+
     const suggestion = {
       offset,
       removedLen,
       removedText,
       insertedText,
       occurrenceIndex,
-      conditionParts,
-      // other flags unchanged
+      conditionParts: [...autoConds, ...conditionParts],
+      isInSentenceInsertion,
+      sentenceInfo,
+      relativeOffset,
     };
 
-    // 4) apply across all drafts by ID positions
-    const seenKeys = new Set<string>();
-    const newDraftArrays: CharObj[][] = [];
-    const newEdges: any[] = [];
+    // 6) apply across all drafts
+    const newSet = new Set(drafts);
+    const edges = [];
 
-    drafts.forEach((dArr) => {
-      const base = charArrayToString(dArr);
+    drafts.forEach((d) => {
+      // check conditions
       if (
         suggestion.conditionParts.length > 0 &&
-        !suggestion.conditionParts.every((p) => base.includes(p))
+        !suggestion.conditionParts.every((p) => d.includes(p))
       ) {
         return;
       }
-      let newArr = [...dArr];
 
+      let newDraft = d;
+
+      // removal/replacement
       if (suggestion.removedLen > 0) {
-        const idxList = findAllIndices(dArr, suggestion.removedText);
+        const idxList = findAllIndices(d, suggestion.removedText);
+        if (idxList.length <= suggestion.occurrenceIndex) return;
         const pos = idxList[suggestion.occurrenceIndex];
-        if (pos === undefined) return;
-        const before = dArr.slice(0, pos);
-        const after = dArr.slice(pos + suggestion.removedLen);
-        const insArr = Array.from(suggestion.insertedText).map((ch) => ({
-          id: generateCharId(),
-          char: ch,
-        }));
-        newArr = [...before, ...insArr, ...after];
-      } else if (
-        suggestion.insertedText.length > 0
-        // other insertion types unchanged
-      ) {
-        const before = dArr.slice(0, suggestion.offset);
-        const after = dArr.slice(suggestion.offset);
-        const insArr = Array.from(suggestion.insertedText).map((ch) => ({
-          id: generateCharId(),
-          char: ch,
-        }));
-        newArr = [...before, ...insArr, ...after];
+        newDraft =
+          d.slice(0, pos) +
+          suggestion.insertedText +
+          d.slice(pos + suggestion.removedLen);
+      }
+      // in-sentence insertion at the same relative offset
+      else if (suggestion.isInSentenceInsertion) {
+        const { text: sentText } = suggestion.sentenceInfo;
+        const idx = d.indexOf(sentText);
+        if (idx === -1) return;
+        const insertAt = idx + suggestion.relativeOffset;
+        newDraft =
+          d.slice(0, insertAt) +
+          suggestion.insertedText +
+          d.slice(insertAt);
+      }
+      // pure insertion (new sentence/paragraph)
+      else if (suggestion.insertedText.length > 0) {
+        const insertAt = Math.min(suggestion.offset, d.length);
+        newDraft =
+          d.slice(0, insertAt) +
+          suggestion.insertedText +
+          d.slice(insertAt);
       }
 
-      const key = newArr.map((c) => c.id).join(",");
-      if (!seenKeys.has(key)) {
-        seenKeys.add(key);
-        newDraftArrays.push(newArr);
-        newEdges.push({ from: dArr, to: newArr });
+      if (newDraft !== d && !newSet.has(newDraft)) {
+        newSet.add(newDraft);
+        edges.push({ from: d, to: newDraft });
       }
     });
 
-    saveHistory(newDraftArrays, newEdges);
+    // 7) save & reset
+    saveHistory(Array.from(newSet), edges);
     setConditionParts([]);
     setHighlighted([]);
-    setCurrentEditText(charArrayToString(selectedDraft));
+    setCurrentEditText(selectedDraft);
   }
 
-  // Text selection and highlight rendering remain, but use charArrayToString() when needed
+  // --- Text selection for manual conditions (Ctrl+drag) ---
+  function handleSelect() {
+    const sel = window.getSelection();
+    if (!sel || !sel.toString()) return;
+    const txt = sel.toString();
+    setConditionParts((prev) =>
+      (window.event.ctrlKey || window.event.metaKey)
+        ? [...prev, txt]
+        : [txt]
+    );
+    setHighlighted((prev) =>
+      (window.event.ctrlKey || window.event.metaKey)
+        ? [...prev, txt]
+        : [txt]
+    );
+    sel.removeAllRanges();
+  }
+
+  // --- Highlight rendering ---
+  function renderWithHighlights(text) {
+    if (!highlighted.length) return text;
+    let segments = [text];
+    highlighted.forEach((frag) => {
+      segments = segments.flatMap((seg) =>
+        typeof seg === "string" && seg.includes(frag)
+          ? seg.split(frag).flatMap((part, i, arr) =>
+              i < arr.length - 1
+                ? [part, <mark key={`${frag}-${i}`}>{frag}</mark>]
+                : [part]
+            )
+          : [seg]
+      );
+    });
+    return segments;
+  }
 
   return (
     <div className="p-4 space-y-6 text-gray-800">
-      <h1 className="text-2xl font-bold">Edit Permutation UI (ID-tracked)</h1>
+      <h1 className="text-2xl font-bold">Edit Permutation UI</h1>
 
-      {/* STEP 1: Initial draft input */}
-      <div>
+      {/* STEP 1: Set initial draft */}
+      <div className="space-y-2">
+        <label className="block font-medium">Initial Draft:</label>
         <textarea
-          value={defaultDraftText}
-          onChange={(e) => setDefaultDraftText(e.target.value)}
-          placeholder="Enter your initial draft..."
-          className="w-full h-24 p-2 border"
+          className="w-full p-2 border rounded bg-white whitespace-pre-wrap min-h-[80px]"
+          value={defaultDraft}
+          onChange={(e) => setDefaultDraft(e.target.value)}
+          placeholder="Type starting text…"
         />
-        <button onClick={initializeDraft} className="mt-2 px-4 py-2 bg-blue-500 text-white rounded">
-          Initialize
-        </button>
-      </div>
-
-      {/* STEP 2: Draft display & editing */}
-      <div>
-        <div
-          ref={draftBoxRef}
-          className="p-2 border h-32 overflow-auto"
-          onMouseUp={() => {/* handleSelect unchanged */}}
+        <button
+          className="bg-green-600 text-white px-4 py-2 rounded"
+          onClick={initializeDraft}
         >
-          {renderWithHighlights(charArrayToString(selectedDraft))}
-        </div>
-        <textarea
-          value={currentEditText}
-          onChange={(e) => setCurrentEditText(e.target.value)}
-          className="w-full h-24 p-2 border"
-        />
-        <button onClick={applyEdit} className="mt-2 px-4 py-2 bg-green-500 text-white rounded">
-          Apply Edit Across Drafts
+          Set
         </button>
       </div>
 
-      {/* STEP 3: Version graph */}
-      <VersionGraph drafts={drafts} edges={graphEdges} onNodeClick={setSelectedDraft} />
+      {drafts.length > 0 && (
+        <>
+          {/* Draft list */}
+          <div>
+            <h2 className="font-semibold">All Drafts:</h2>
+            <ul className="flex flex-wrap gap-2">
+              {drafts.map((d, i) => (
+                <li
+                  key={i}
+                  onClick={() => {
+                    setSelectedDraft(d);
+                    setCurrentEditText(d);
+                    setHighlighted([]);
+                    setConditionParts([]);
+                  }}
+                  className={`px-2 py-1 rounded cursor-pointer ${
+                    d === selectedDraft ? "bg-blue-200" : "bg-gray-100"
+                  }`}
+                >
+                  {d}
+                </li>
+              ))}
+            </ul>
+          </div>
+
+          {/* Free-style edit area */}
+          <div>
+            <h2 className="font-semibold">Selected Draft (edit freely):</h2>
+            <textarea
+              ref={draftBoxRef}
+              onMouseUp={handleSelect}
+              className="w-full p-2 border rounded bg-white whitespace-pre-wrap min-h-[80px]"
+              value={currentEditText}
+              onChange={(e) => setCurrentEditText(e.target.value)}
+            />
+            <div className="text-sm text-gray-600">
+              Conditions:{" "}
+              {conditionParts.length ? conditionParts.join(", ") : "(none)"}
+            </div>
+            <div className="space-x-2 mt-2">
+              <button
+                className="bg-blue-600 text-white px-4 py-2 rounded"
+                onClick={applyEdit}
+              >
+                Submit Edit
+              </button>
+              <button className="bg-gray-200 px-4 py-2 rounded" onClick={undo}>
+                Undo (Ctrl+Z)
+              </button>
+              <button className="bg-gray-200 px-4 py-2 rounded" onClick={redo}>
+                Redo (Ctrl+Y)
+              </button>
+            </div>
+          </div>
+
+          {/* Version graph */}
+          <div>
+            <h2 className="font-semibold mt-6">Version Graph:</h2>
+            <VersionGraph
+              edges={graphEdges}
+              onSelectDraft={setSelectedDraft}
+            />
+          </div>
+        </>
+      )}
     </div>
   );
 }
+
 
 
 
