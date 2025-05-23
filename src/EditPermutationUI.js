@@ -163,9 +163,8 @@ export default function EditPermutationUI() {
       const newEdges = [];
       const seenKeys = new Set(newDrafts.map(d => d.map(c => c.id).join(",")));
       drafts.forEach(dArr => {
-        // Enforce user-selected conditions for pure sentence additions
-        const idArr = dArr.map(c => c.id);
-        if (conditionParts.length && !conditionParts.every(cond => idSeqExists(idArr, cond))) return;
+        // If user-selected conditions exist, only apply to the current selected draft
+        if (conditionParts.length && dArr !== selectedDraft) return;
         const before = dArr.slice(0, prefixLen);
         const after = dArr.slice(prefixLen);
         const insArr = Array.from(insertedText).map(ch => ({ id: generateCharId(), char: ch }));
