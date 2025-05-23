@@ -24,17 +24,20 @@ function findSegmentIndex(idArr, segmentIds) {
   return -1;
 }
 
+// Check if sequence exists in ID array
+function idSeqExists(idArr, seq) {
+  return findSegmentIndex(idArr, seq) >= 0;
+}
+
 // Auto-conditions: specs for removal or insertion
 // Removal: { type: 'remove', segmentIds }
-// In-sentence insertion only (no removal): { type: 'insert', segmentIds, relOffset }
+// In-sentence insertion only: { type: 'insert', segmentIds, relOffset }
 function getAutoConditions(arr, offset, removedLen) {
   const text = charArrayToString(arr);
-  // REMOVAL auto-condition
   if (removedLen > 0) {
     const segmentIds = arr.slice(offset, offset + removedLen).map(c => c.id);
     return [{ type: 'remove', segmentIds }];
   }
-  // PURE INSERTION auto-condition (within sentence)
   const beforePara = text.lastIndexOf("\n", offset - 1);
   const afterPara = text.indexOf("\n", offset);
   const paraStart = beforePara + 1;
@@ -51,7 +54,6 @@ function getAutoConditions(arr, offset, removedLen) {
       return [{ type: 'insert', segmentIds, relOffset }];
     }
   }
-  // fallback to paragraph-level
   const segIds = arr.slice(paraStart, paraEnd).map(c => c.id);
   const relOffset = offset - paraStart;
   return [{ type: 'insert', segmentIds: segIds, relOffset }];
@@ -62,6 +64,7 @@ export default function EditPermutationUI() {
   const [drafts, setDrafts] = useState([]);
   const [selectedDraft, setSelectedDraft] = useState([]);
   const [currentEditText, setCurrentEditText] = useState("");
+  // conditionParts: array of either string or ID-array
   const [conditionParts, setConditionParts] = useState([]);
   const [history, setHistory] = useState([]);
   const [redoStack, setRedoStack] = useState([]);
@@ -142,7 +145,6 @@ export default function EditPermutationUI() {
     const insertedText = newText.slice(prefixLen, newText.length - suffixLen);
     const isReplacement = removedLen > 0 && insertedText.length > 0;
 
-    // Get auto-specs for removal or insertion
     const autoSpecs = getAutoConditions(oldArr, prefixLen, removedLen);
 
     const newDraftsArr = [...drafts];
@@ -151,12 +153,17 @@ export default function EditPermutationUI() {
 
     drafts.forEach(dArr => {
       let updated = [...dArr];
-      // Enforce user-selected text conditions
-      if (conditionParts.length && !conditionParts.every(p => charArrayToString(dArr).includes(p))) return;
-
       const idArr = dArr.map(c => c.id);
+      // enforce user-selected conditions (ID or text)
+      if (conditionParts.length) {
+        const ok = conditionParts.every(cond => Array.isArray(cond)
+          ? idSeqExists(idArr, cond)
+          : charArrayToString(dArr).includes(cond)
+        );
+        if (!ok) return;
+      }
+
       if (isReplacement) {
-        // Replacement = remove + insert
         const { segmentIds } = autoSpecs[0];
         const pos = findSegmentIndex(idArr, segmentIds);
         if (pos < 0) return;
@@ -165,13 +172,12 @@ export default function EditPermutationUI() {
         const insArr = Array.from(insertedText).map(ch => ({ id: generateCharId(), char: ch }));
         updated = [...before, ...insArr, ...after];
       } else {
-        // Pure remove or insert specs
         for (let spec of autoSpecs) {
           const pos = findSegmentIndex(idArr, spec.segmentIds);
           if (pos < 0) return;
           if (spec.type === 'remove') {
             updated = [...updated.slice(0, pos), ...updated.slice(pos + removedLen)];
-          } else if (spec.type === 'insert') {
+          } else {
             const insArr = Array.from(insertedText).map(ch => ({ id: generateCharId(), char: ch }));
             const insPos = pos + spec.relOffset;
             updated = [...updated.slice(0, insPos), ...insArr, ...updated.slice(insPos)];
@@ -193,12 +199,14 @@ export default function EditPermutationUI() {
   }
 
   function handleSelect() {
-    const sel = window.getSelection();
-    if (!sel || !sel.toString()) return;
-    const txt = sel.toString();
+    const area = draftBoxRef.current;
+    const start = area.selectionStart;
+    const end = area.selectionEnd;
+    if (start == null || end == null || start === end) return;
     const multi = window.event.ctrlKey || window.event.metaKey;
-    setConditionParts(prev => (multi ? [...prev, txt] : [txt]));
-    sel.removeAllRanges();
+    const segmentIds = selectedDraft.slice(start, end).map(c => c.id);
+    setConditionParts(prev => multi ? [...prev, segmentIds] : [segmentIds]);
+    area.setSelectionRange(end, end);
   }
 
   return (
@@ -252,19 +260,11 @@ export default function EditPermutationUI() {
               onChange={e => setCurrentEditText(e.target.value)}
               className="w-full p-2 border rounded whitespace-pre-wrap min-h-[80px]"
             />
-            <div className="mt-2">
-              Conditions: {conditionParts.length ? conditionParts.join(', ') : '(none)'}
-            </div>
+            <div className="mt-2">Conditions: {conditionParts.map(cond => Array.isArray(cond) ? '[ID]' : cond).join(', ') || '(none)'}</div>
             <div className="space-x-2 mt-4">
-              <button onClick={applyEdit} className="bg-blue-600 text-white px-4 py-2 rounded">
-                Submit Edit
-              </button>
-              <button onClick={undo} className="bg-gray-200 px-4 py-2 rounded">
-                Undo (Ctrl+Z)
-              </button>
-              <button onClick={redo} className="bg-gray-200 px-4 py-2 rounded">
-                Redo (Ctrl+Y)
-              </button>
+              <button onClick={applyEdit} className="bg-blue-600 text-white px-4 py-2 rounded">Submit Edit</button>
+              <button onClick={undo} className="bg-gray-200 px-4 py-2 rounded">Undo (Ctrl+Z)</button>
+              <button onClick={redo} className="bg-gray-200 px-4 py-2 rounded">Redo (Ctrl+Y)</button>
             </div>
           </div>
 
