@@ -84,6 +84,20 @@ export default function EditPermutationUI() {
     return () => window.removeEventListener("keydown", handleKey);
   }, [history, redoStack, drafts]);
 
+  // Global selection listener for contentEditable spans
+  useEffect(() => {
+    const onSelectionChange = () => {
+      const sel = window.getSelection();
+      if (!sel || sel.isCollapsed) return;
+      if (!draftBoxRef.current) return;
+      if (draftBoxRef.current.contains(sel.anchorNode) && draftBoxRef.current.contains(sel.focusNode)) {
+        handleSelect();
+      }
+    };
+    document.addEventListener("selectionchange", onSelectionChange);
+    return () => document.removeEventListener("selectionchange", onSelectionChange);
+  }, [selectedDraft, drafts]);
+
   function saveHistory(newDrafts, newEdges) {
     setHistory(h => [...h, drafts]);
     setRedoStack([]);
