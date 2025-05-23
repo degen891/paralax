@@ -240,16 +240,16 @@ export default function EditPermutationUI() {
 
   // Capture user selection as ID condition
   function handleSelect() {
-    const sel = window.getSelection();
-    if (!sel || !sel.toString()) return;
-    const txt = sel.toString();
+    const area = draftBoxRef.current;
+    if (!area) return;
+    const start = area.selectionStart;
+    const end = area.selectionEnd;
+    if (start == null || end == null || start === end) return;
     const multi = window.event.ctrlKey || window.event.metaKey;
-    const baseText = charArrayToString(selectedDraft);
-    const offset = baseText.indexOf(txt);
-    if (offset < 0) return;
-    const segmentIds = selectedDraft.slice(offset, offset + txt.length).map(c => c.id);
+    const segmentIds = selectedDraft.slice(start, end).map(c => c.id);
     setConditionParts(prev => multi ? [...prev, segmentIds] : [segmentIds]);
-    sel.removeAllRanges();
+    // collapse selection to end
+    area.setSelectionRange(end, end);
   }
 
   return (
