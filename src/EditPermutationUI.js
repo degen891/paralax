@@ -138,6 +138,10 @@ export default function EditPermutationUI() {
     const oldText = charArrayToString(oldArr);
     const newText = currentEditText;
 
+    const oldArr = selectedDraft;
+    const oldText = charArrayToString(oldArr);
+    const newText = currentEditText;
+
     // diff prefix/suffix
     let prefixLen = 0;
     const maxPref = Math.min(oldText.length, newText.length);
