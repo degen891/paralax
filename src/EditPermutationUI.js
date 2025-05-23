@@ -291,7 +291,6 @@ export default function EditPermutationUI() {
             <div className="space-x-2 mt-4">
               <button onClick={applyEdit} className="bg-blue-600 text-white px-4 py-2 rounded">Submit Edit</button>
               <button onClick={handleSelect} className="bg-yellow-500 text-white px-4 py-2 rounded">Capture Condition</button>
-              <button onClick={undo} className="bg-blue-600 text-white px-4 py-2 rounded">Submit Edit</button>
               <button onClick={undo} className="bg-gray-200 px-4 py-2 rounded">Undo (Ctrl+Z)</button>
               <button onClick={redo} className="bg-gray-200 px-4 py-2 rounded">Redo (Ctrl+Y)</button>
             </div>
