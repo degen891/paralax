@@ -239,7 +239,28 @@ export default function EditPermutationUI() {
   }
 
   // Capture user selection as ID condition
-  $1
+  // Capture user selection as ID condition
+  function handleSelect() {
+    const sel = window.getSelection();
+    if (!sel || !sel.toString()) return;
+    const txt = sel.toString();
+    const multi = window.event.ctrlKey || window.event.metaKey;
+    // Determine the draft array matching the textarea content
+    const idx = stringDrafts.indexOf(currentEditText);
+    const baseArr = idx >= 0 ? drafts[idx] : selectedDraft;
+    // Sync selectedDraft if necessary
+    if (idx >= 0) setSelectedDraft(baseArr);
+    // Capture selection range in textarea
+    const area = draftBoxRef.current;
+    if (!area) return;
+    const start = area.selectionStart;
+    const end = area.selectionEnd;
+    if (start == null || end == null || start === end) return;
+    const segmentIds = baseArr.slice(start, end).map(c => c.id);
+    setConditionParts(prev => (multi ? [...prev, segmentIds] : [segmentIds]));
+    // Collapse selection
+    area.setSelectionRange(end, end);
+  }
 
   return (
     <div className="p-4 space-y-6 text-gray-800">
