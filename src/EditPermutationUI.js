@@ -174,7 +174,17 @@ export default function EditPermutationUI() {
           newEdges.push({ from: dArr, to: updated });
         }
       });
+      // Commit
       saveHistory(newDrafts, newEdges);
+      // Switch selection to the branch created from the current draft
+      const matched = newEdges.find(edge => edge.from === selectedDraft);
+      if (matched) {
+        setSelectedDraft(matched.to);
+        setCurrentEditText(charArrayToString(matched.to));
+      }
+      setConditionParts([]);
+      return;
+    }
       setConditionParts([]);
       return;
     }
