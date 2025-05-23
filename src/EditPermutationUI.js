@@ -17,39 +17,29 @@ function buildCharArray(text) {
   return Array.from(text).map(ch => ({ id: generateCharId(), char: ch }));
 }
 
-export default function EditPermutationUI() {
-  const [defaultDraft, setDefaultDraft] = useState("");
-  const [drafts, setDrafts] = useState([]);
-  const [selectedDraft, setSelectedDraft] = useState([]);
-  const [currentEditText, setCurrentEditText] = useState("");
-  const [selectionRange, setSelectionRange] = useState([0, 0]);
-  const [conditionRanges, setConditionRanges] = useState([]);
-
-  // Auto-condition ranges based on sentence context
-  function getAutoConditionRanges(text, prefix, removedLen) {
-    const beforePara = text.lastIndexOf("
-", prefix - 1);
-    const afterPara = text.indexOf("
-", prefix + removedLen);
-    const paraStart = beforePara + 1;
-    const paraEnd = afterPara === -1 ? text.length : afterPara;
-    const paragraph = text.slice(paraStart, paraEnd);
-    const regex = /[^.?!;:]+[.?!;:]/g;
-    const ranges = [];
-    let match;
-    while ((match = regex.exec(paragraph)) !== null) {
-      const s = paraStart + match.index;
-      const e = s + match[0].length;
-      // only include if overlaps removal region
-      if (!(prefix + removedLen <= s || prefix >= e)) {
-        ranges.push([s, e]);
-      }
+// Derive auto-condition ranges (start,end) based on sentence context
+function getAutoConditionRanges(text, prefix, removedLen) {
+  const beforePara = text.lastIndexOf("\n", prefix - 1);
+  const afterPara = text.indexOf("\n", prefix + removedLen);
+  const paraStart = beforePara + 1;
+  const paraEnd = afterPara === -1 ? text.length : afterPara;
+  const paragraph = text.slice(paraStart, paraEnd);
+  const regex = /[^.?!;:]+[.?!;:]/g;
+  const ranges = [];
+  let match;
+  while ((match = regex.exec(paragraph)) !== null) {
+    const s = paraStart + match.index;
+    const e = s + match[0].length;
+    // include only if overlaps removal region
+    if (!(prefix + removedLen <= s || prefix >= e)) {
+      ranges.push([s, e]);
     }
-    if (!ranges.length) {
-      ranges.push([paraStart, paraEnd]);
-    }
-    return ranges;
   }
+  if (!ranges.length) {
+    ranges.push([paraStart, paraEnd]);
+  }
+  return ranges;
+}
 
 export default function EditPermutationUI() {
   const [defaultDraft, setDefaultDraft] = useState("");
@@ -72,32 +62,32 @@ export default function EditPermutationUI() {
     setConditionRanges([]);
   }
 
-  // Sync buffer when draft changes
+  // Sync textarea value when selected draft changes
   useEffect(() => {
     setCurrentEditText(charArrayToString(selectedDraft));
   }, [selectedDraft]);
 
-  // Capture selection in textarea
+  // Capture selection positions in textarea
   function handleSelect(e) {
     const start = e.target.selectionStart;
     const end = e.target.selectionEnd;
     setSelectionRange([start, end]);
   }
 
-  // Add a condition range
+  // Capture a user-selected condition range
   function captureCondition() {
     const [start, end] = selectionRange;
     if (start === end) return;
     setConditionRanges(prev => [...prev, [start, end]]);
   }
 
-  // Apply edit
+  // Apply edit logic with ID-based conditions and auto-conditions
   function applyEdit() {
     const oldArr = selectedDraft;
     const oldText = charArrayToString(oldArr);
     const newText = currentEditText;
 
-    // Compute diff
+    // Compute diff prefix/suffix
     let prefix = 0;
     const maxP = Math.min(oldText.length, newText.length);
     while (prefix < maxP && oldText[prefix] === newText[prefix]) prefix++;
@@ -108,72 +98,55 @@ export default function EditPermutationUI() {
       oldText[oldText.length - 1 - suffix] === newText[newText.length - 1 - suffix]
     ) suffix++;
 
-    const removedText = oldText.slice(prefix, oldText.length - suffix);
-    const removedIds = removedText
-      ? oldArr.slice(prefix, prefix + removedText.length).map(c => c.id)
-      : [];
+    const removedLen = oldText.length - prefix - suffix;
+    const removedText = oldText.slice(prefix, prefix + removedLen);
     const insertedText = newText.slice(prefix, newText.length - suffix);
+
+    // Determine condition ranges: user-selected or auto
+    const targetRanges = conditionRanges.length > 0
+      ? conditionRanges
+      : removedLen > 0
+        ? getAutoConditionRanges(oldText, prefix, removedLen)
+        : [[0, oldArr.length]];
 
     const newDraftsArr = [...drafts];
     const seen = new Set(newDraftsArr.map(d => d.map(c => c.id).join(",")));
 
-    if (!removedIds.length && conditionRanges.length === 0 && insertedText) {
-      // Pure insertion
-      const insArr = buildCharArray(insertedText);
-      drafts.forEach(dArr => {
-        const variant = [
-          ...dArr.slice(0, prefix),
-          ...insArr,
-          ...dArr.slice(prefix)
-        ];
-        const key = variant.map(c => c.id).join(",");
-        if (!seen.has(key)) {
-          seen.add(key);
-          newDraftsArr.push(variant);
+    drafts.forEach(dArr => {
+      targetRanges.forEach(([s, e]) => {
+        // Removal
+        if (removedLen > 0) {
+          const variant = [
+            ...dArr.slice(0, s),
+            ...dArr.slice(e)
+          ];
+          const key = variant.map(c => c.id).join(",");
+          if (!seen.has(key)) {
+            seen.add(key);
+            newDraftsArr.push(variant);
+          }
+        }
+        // Insertion
+        if (insertedText) {
+          const insArr = buildCharArray(insertedText);
+          const variant = [
+            ...dArr.slice(0, s),
+            ...insArr,
+            ...dArr.slice(s)
+          ];
+          const key = variant.map(c => c.id).join(",");
+          if (!seen.has(key)) {
+            seen.add(key);
+            newDraftsArr.push(variant);
+          }
         }
       });
-    } else {
-      // Conditional edits
-      const targetRanges = conditionRanges.length
-        ? conditionRanges
-        : removedIds.length
-          ? [[prefix, prefix + removedText.length]]
-          : [[0, oldArr.length]];
+    });
 
-      drafts.forEach(dArr => {
-        targetRanges.forEach(([s, e]) => {
-          // Removal
-          if (removedIds.length) {
-            const variant = [
-              ...dArr.slice(0, s),
-              ...dArr.slice(e)
-            ];
-            const key = variant.map(c => c.id).join(",");
-            if (!seen.has(key)) {
-              seen.add(key);
-              newDraftsArr.push(variant);
-            }
-          }
-          // Insertion
-          if (insertedText) {
-            const insArr = buildCharArray(insertedText);
-            const variant = [
-              ...dArr.slice(0, s),
-              ...insArr,
-              ...dArr.slice(s)
-            ];
-            const key = variant.map(c => c.id).join(",");
-            if (!seen.has(key)) {
-              seen.add(key);
-              newDraftsArr.push(variant);
-            }
-          }
-        });
-      });
+    if (newDraftsArr.length > drafts.length) {
+      setDrafts(newDraftsArr);
+      setSelectedDraft(newDraftsArr[newDraftsArr.length - 1]);
     }
-
-    setDrafts(newDraftsArr);
-    setSelectedDraft(newDraftsArr[newDraftsArr.length - 1]);
     setConditionRanges([]);
   }
 
