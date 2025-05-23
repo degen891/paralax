@@ -237,8 +237,6 @@ export default function EditPermutationUI() {
 
   // Capture user selection as ID condition
   function handleSelect() {
-  // Capture user selection as ID condition
-  function handleSelect() {
     const sel = window.getSelection();
     if (!sel || !sel.toString()) return;
     const txt = sel.toString();
