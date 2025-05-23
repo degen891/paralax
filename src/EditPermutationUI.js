@@ -156,7 +156,7 @@ export default function EditPermutationUI() {
     const insertedText = newText.slice(prefixLen, newText.length - suffixLen);
     const isReplacement = removedLen > 0 && insertedText.length > 0;
 
-    // 1) Detect pure sentence addition: no removal, and insertedText is a standalone sentence
+    // 1) Detect pure sentence addition: no removal, standalone sentence
     const isSentenceAddition = removedLen === 0 && /^[^.?!;:]+[.?!;:]$/.test(insertedText.trim());
     if (isSentenceAddition) {
       const newDrafts = [...drafts];
@@ -174,22 +174,18 @@ export default function EditPermutationUI() {
           newEdges.push({ from: dArr, to: updated });
         }
       });
-      // Commit
       saveHistory(newDrafts, newEdges);
-      // Switch selection to the branch created from the current draft
       const matched = newEdges.find(edge => edge.from === selectedDraft);
       if (matched) {
         setSelectedDraft(matched.to);
         setCurrentEditText(charArrayToString(matched.to));
       }
-    }
       setConditionParts([]);
       return;
     }
 
-    // 2) Otherwise, use ID-based auto-conditions as before
+    // 2) Default ID-based auto-conditions
     const autoSpecs = getAutoConditions(oldArr, prefixLen, removedLen);
-
     const newDraftsArr = [...drafts];
     const newEdges = [];
     const seen = new Set(newDraftsArr.map(d => d.map(c => c.id).join(",")));
@@ -239,6 +235,8 @@ export default function EditPermutationUI() {
     setConditionParts([]);
   }
 
+  // Capture user selection as ID condition
+  function handleSelect() {
   // Capture user selection as ID condition
   function handleSelect() {
     const sel = window.getSelection();
