@@ -17,10 +17,7 @@ function findIdSeqPositions(arr, idSeq) {
   const positions = [];
   const key = idSeq.join(",");
   for (let i = 0; i + idSeq.length <= arr.length; i++) {
-    const sliceKey = arr
-      .slice(i, i + idSeq.length)
-      .map(c => c.id)
-      .join(",");
+    const sliceKey = arr.slice(i, i + idSeq.length).map(c => c.id).join(",");
     if (sliceKey === key) positions.push(i);
   }
   return positions;
@@ -84,20 +81,6 @@ export default function EditPermutationUI() {
     return () => window.removeEventListener("keydown", handleKey);
   }, [history, redoStack, drafts]);
 
-  // Global selection listener for contentEditable spans
-  useEffect(() => {
-    const onSelectionChange = () => {
-      const sel = window.getSelection();
-      if (!sel || sel.isCollapsed) return;
-      if (!draftBoxRef.current) return;
-      if (draftBoxRef.current.contains(sel.anchorNode) && draftBoxRef.current.contains(sel.focusNode)) {
-        handleSelect();
-      }
-    };
-    document.addEventListener("selectionchange", onSelectionChange);
-    return () => document.removeEventListener("selectionchange", onSelectionChange);
-  }, [selectedDraft, drafts]);
-
   function saveHistory(newDrafts, newEdges) {
     setHistory(h => [...h, drafts]);
     setRedoStack([]);
@@ -124,7 +107,7 @@ export default function EditPermutationUI() {
   }
 
   function initializeDraft() {
-    if (!defaultDraft) return;
+    if (!defaultDraft.trim()) return;
     const arr = Array.from(defaultDraft).map(ch => ({ id: generateCharId(), char: ch }));
     setDrafts([arr]);
     setSelectedDraft(arr);
@@ -225,7 +208,7 @@ export default function EditPermutationUI() {
     const spans = Array.from(draftBoxRef.current.querySelectorAll("span[data-id]"));
     const getSpan = node => {
       while (node && node !== draftBoxRef.current) {
-        if (node.dataset && node.dataset.id) return node;
+        if (node.nodeType === 1 && node.dataset.id) return node;
         node = node.parentNode;
       }
       return null;
@@ -254,10 +237,15 @@ export default function EditPermutationUI() {
         suppressContentEditableWarning
         onInput={e => setCurrentEditText(e.currentTarget.textContent)}
         onMouseUp={handleSelect}
+        onKeyUp={handleSelect}
         className="w-full p-2 border rounded whitespace-pre-wrap min-h-[80px] cursor-text"
       >
         {arr.map(c => (
-          <span key={c.id} data-id={c.id} className={highlightedIds.includes(c.id) ? 'bg-yellow-200' : ''}>
+          <span
+            key={c.id}
+            data-id={c.id}
+            className={highlightedIds.includes(c.id) ? 'bg-yellow-200' : ''}
+          >
             {c.char}
           </span>
         ))}
@@ -281,28 +269,43 @@ export default function EditPermutationUI() {
       </div>
 
       {drafts.length > 0 && (
-        <>  
+        <>
           <div>
             <h2 className="text-xl font-semibold">All Drafts:</h2>
             <ul className="flex flex-wrap gap-2">
-              {stringDrafts.map((t,i)=>(
-                <li key={drafts[i].map(c=>c.id).join(",")} onClick={()=>setSelectedDraft(drafts[i])} className={`px-2 py-1 rounded cursor-pointer ${drafts[i]===selectedDraft?'bg-blue-200':'bg-gray-100'}`}>{t}</li>
+              {stringDrafts.map((text, i) => (
+                <li
+                  key={drafts[i].map(c => c.id).join(",")}  
+                  onClick={() => setSelectedDraft(drafts[i])}
+                  className={`px-2 py-1 rounded cursor-pointer ${drafts[i] === selectedDraft ? 'bg-blue-200' : 'bg-gray-100'}`}
+                >
+                  {text}
+                </li>
               ))}
             </ul>
           </div>
           <div>
             <h2 className="text-xl font-semibold">Selected Draft (edit):</h2>
             {renderEditableDraft(selectedDraft)}
-            <div className="mt-2">Conditions: {conditionParts.length ? conditionParts.map(ids => charArrayToString(selectedDraft.filter(c => ids.includes(c.id)))).join(', ') : '(none)'}</div>
+            <div className="mt-2">
+              Conditions: {conditionParts.length ? conditionParts.map(ids => charArrayToString(selectedDraft.filter(c => ids.includes(c.id)))).join(', ') : '(none)'}
+            </div>
             <div className="space-x-2 mt-4">
-              <button onClick={applyEdit} className="bg-blue-600 text-white px-4 py-2.rounded">Submit Edit</button>
-              <button onClick={undo} className="bg-gray-200 px-4 py-2.rounded">Undo (Ctrl+Z)</button>
-              <button onClick={redo} className="bg-gray-200 px-4 py-2.rounded">Redo (Ctrl+Y)</button>
+              <button onClick={applyEdit} className="bg-blue-600 text-white px-4 py-2 rounded">Submit Edit</button>
+              <button onClick={undo} className="bg-gray-200 px-4 py-2 rounded">Undo (Ctrl+Z)</button>
+              <button onClick={redo} className="bg-gray-200 px-4 py-2 rounded">Redo (Ctrl+Y)</button>
             </div>
           </div>
           <div>
             <h2 className="text-xl font-semibold">Version Graph:</h2>
-            <VersionGraph drafts={stringDrafts} edges={stringEdges} onNodeClick={text=>{const idx=stringDrafts.indexOf(text);if(idx>=0) setSelectedDraft(drafts[idx]);}} />
+            <VersionGraph
+              drafts={stringDrafts}
+              edges={stringEdges}
+              onNodeClick={text => {
+                const idx = stringDrafts.indexOf(text);
+                if (idx >= 0) setSelectedDraft(drafts[idx]);
+              }}
+            />
           </div>
         </>
       )}
