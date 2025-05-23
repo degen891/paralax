@@ -88,32 +88,77 @@ export default function EditPermutationUI() {
       : [];
     const insertedText = newText.slice(prefix, newText.length - suffix);
 
-    // Determine which ranges to apply based on ID or selection
-    const targetRanges = conditionRanges.length > 0
-      ? conditionRanges
-      : removedIds.length > 0
-        ? [[prefix, prefix + removedIds.length]]
-        : [[0, selectedDraft.length]];
-
     const newDraftsArr = [...drafts];
     const newEdges = [];
     const seen = new Set(newDraftsArr.map(arr => arr.map(c => c.id).join(",")));
 
-    drafts.forEach(dArr => {
-      targetRanges.forEach(([s, e]) => {
-        // Removal
-        if (removedIds.length) {
-          const variant = [
-            ...dArr.slice(0, s),
-            ...dArr.slice(e)
-          ];
-          const key = variant.map(c => c.id).join(",");
-          if (!seen.has(key)) {
-            seen.add(key);
-            newDraftsArr.push(variant);
-            newEdges.push({ from: dArr, to: variant });
-          }
+    // Pure insertion (no removal, no conditions): insert at prefix
+    if (!removedIds.length && conditionRanges.length === 0 && insertedText) {
+      const insArr = buildCharArray(insertedText);
+      drafts.forEach(dArr => {
+        const variant = [
+          ...dArr.slice(0, prefix),
+          ...insArr,
+          ...dArr.slice(prefix)
+        ];
+        const key = variant.map(c => c.id).join(",");
+        if (!seen.has(key)) {
+          seen.add(key);
+          newDraftsArr.push(variant);
+          newEdges.push({ from: dArr, to: variant });
         }
+      });
+    } else {
+      // Other edits: use conditions or removedIds
+      // Determine target ranges (by index or default to removal range)
+      const targetRanges = conditionRanges.length > 0
+        ? conditionRanges
+        : removedIds.length > 0
+          ? [[prefix, prefix + removedIds.length]]
+          : [[0, oldArr.length]];
+
+      drafts.forEach(dArr => {
+        targetRanges.forEach(([s, e]) => {
+          // Removal
+          if (removedIds.length) {
+            const variant = [
+              ...dArr.slice(0, s),
+              ...dArr.slice(e)
+            ];
+            const key = variant.map(c => c.id).join(",");
+            if (!seen.has(key)) {
+              seen.add(key);
+              newDraftsArr.push(variant);
+              newEdges.push({ from: dArr, to: variant });
+            }
+          }
+          // Insertion at s
+          if (insertedText) {
+            const insArr = buildCharArray(insertedText);
+            const variant = [
+              ...dArr.slice(0, s),
+              ...insArr,
+              ...dArr.slice(s)
+            ];
+            const key = variant.map(c => c.id).join(",");
+            if (!seen.has(key)) {
+              seen.add(key);
+              newDraftsArr.push(variant);
+              newEdges.push({ from: dArr, to: variant });
+            }
+          }
+        });
+      });
+    }
+
+    if (newEdges.length) {
+      setDrafts(newDraftsArr);
+      setSelectedDraft(newDraftsArr[newDraftsArr.length - 1]);
+      // graphEdges update omitted
+    }
+    setConditionRanges([]);
+  }
+}
         // Insertion
         if (insertedText) {
           const insArr = buildCharArray(insertedText);
