@@ -242,11 +242,15 @@ export default function EditPermutationUI() {
   function renderEditableDraft(arr) {
     return (
       <div
-        key={arr.map(c => c.id).join(",")}  
+        key={arr.map(c => c.id).join(",")}
         ref={draftBoxRef}
         contentEditable
         suppressContentEditableWarning
-        onInput={e => setCurrentEditText(e.currentTarget.textContent)} onMouseUp={handleSelect} onKeyUp={handleSelect} className="w-full p-2 border rounded whitespace-pre-wrap min-h-[80px] cursor-text"
+        onInput={e => setCurrentEditText(e.currentTarget.textContent)}
+        onMouseUp={handleSelect}
+        onKeyUp={handleSelect}
+        onSelect={handleSelect}
+        className="w-full p-2 border rounded whitespace-pre-wrap min-h-[80px] cursor-text"
       >
         {arr.map(c => (
           <span
@@ -259,6 +263,7 @@ export default function EditPermutationUI() {
         ))}
       </div>
     );
+  }
   }
 
   return (
