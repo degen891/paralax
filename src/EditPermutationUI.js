@@ -24,9 +24,9 @@ function findSegmentIndex(idArr, segmentIds) {
   return -1;
 }
 
-// Auto-conditions: return ID-based specs for removal or insertion
-// For removal: { type: 'remove', segmentIds }
-// For in-sentence insertion: { type: 'insert', segmentIds, relOffset }
+// Auto-conditions: specs for removal or insertion
+// Removal: { type: 'remove', segmentIds }
+// In-sentence insertion only (no removal): { type: 'insert', segmentIds, relOffset }
 function getAutoConditions(arr, offset, removedLen) {
   const text = charArrayToString(arr);
   // REMOVAL auto-condition
@@ -34,7 +34,7 @@ function getAutoConditions(arr, offset, removedLen) {
     const segmentIds = arr.slice(offset, offset + removedLen).map(c => c.id);
     return [{ type: 'remove', segmentIds }];
   }
-  // INSIDE-SENTENCE insertion auto-condition
+  // PURE INSERTION auto-condition (within sentence)
   const beforePara = text.lastIndexOf("\n", offset - 1);
   const afterPara = text.indexOf("\n", offset);
   const paraStart = beforePara + 1;
@@ -51,7 +51,7 @@ function getAutoConditions(arr, offset, removedLen) {
       return [{ type: 'insert', segmentIds, relOffset }];
     }
   }
-  // fallback to paragraph-level if no sentence match
+  // fallback to paragraph-level
   const segIds = arr.slice(paraStart, paraEnd).map(c => c.id);
   const relOffset = offset - paraStart;
   return [{ type: 'insert', segmentIds: segIds, relOffset }];
@@ -69,7 +69,10 @@ export default function EditPermutationUI() {
   const draftBoxRef = useRef(null);
 
   const stringDrafts = drafts.map(arr => charArrayToString(arr));
-  const stringEdges = graphEdges.map(({ from, to }) => ({ from: from ? charArrayToString(from) : null, to: charArrayToString(to) }));
+  const stringEdges = graphEdges.map(({ from, to }) => ({
+    from: from ? charArrayToString(from) : null,
+    to: charArrayToString(to),
+  }));
 
   useEffect(() => {
     const handleKey = e => {
@@ -124,40 +127,59 @@ export default function EditPermutationUI() {
     const oldText = charArrayToString(oldArr);
     const newText = currentEditText;
 
-    // prefix/suffix diff
+    // Compute prefix/suffix diff
     let prefixLen = 0;
     const maxPref = Math.min(oldText.length, newText.length);
     while (prefixLen < maxPref && oldText[prefixLen] === newText[prefixLen]) prefixLen++;
     let suffixLen = 0;
-    while (suffixLen < oldText.length - prefixLen && suffixLen < newText.length - prefixLen && oldText[oldText.length-1-suffixLen] === newText[newText.length-1-suffixLen]) suffixLen++;
+    while (
+      suffixLen < oldText.length - prefixLen &&
+      suffixLen < newText.length - prefixLen &&
+      oldText[oldText.length - 1 - suffixLen] === newText[newText.length - 1 - suffixLen]
+    ) suffixLen++;
 
     const removedLen = oldText.length - prefixLen - suffixLen;
     const insertedText = newText.slice(prefixLen, newText.length - suffixLen);
+    const isReplacement = removedLen > 0 && insertedText.length > 0;
 
-    const autoSpecs = (removedLen>0||insertedText)? getAutoConditions(oldArr, prefixLen, removedLen): [];
+    // Get auto-specs for removal or insertion
+    const autoSpecs = getAutoConditions(oldArr, prefixLen, removedLen);
+
     const newDraftsArr = [...drafts];
     const newEdges = [];
-    const seen = new Set(newDraftsArr.map(d=>d.map(c=>c.id).join(",")));
+    const seen = new Set(newDraftsArr.map(d => d.map(c => c.id).join(",")));
 
     drafts.forEach(dArr => {
       let updated = [...dArr];
-      // check string-based conditions
-      if (conditionParts.length && !conditionParts.every(p=>charArrayToString(dArr).includes(p))) return;
-      // apply auto-specs
-      for (let spec of autoSpecs) {
-        const idArr = dArr.map(c=>c.id);
-        const idx = findSegmentIndex(idArr, spec.segmentIds);
-        if (idx<0) return; // condition fails
-        if (spec.type==='remove') {
-          updated = [...updated.slice(0,idx), ...updated.slice(idx+removedLen)];
-        } else if (spec.type==='insert') {
-          const insArr = Array.from(insertedText).map(ch=>({ id: generateCharId(), char: ch }));
-          const insPos = idx + spec.relOffset;
-          updated = [...updated.slice(0,insPos), ...insArr, ...updated.slice(insPos)];
+      // Enforce user-selected text conditions
+      if (conditionParts.length && !conditionParts.every(p => charArrayToString(dArr).includes(p))) return;
+
+      const idArr = dArr.map(c => c.id);
+      if (isReplacement) {
+        // Replacement = remove + insert
+        const { segmentIds } = autoSpecs[0];
+        const pos = findSegmentIndex(idArr, segmentIds);
+        if (pos < 0) return;
+        const before = dArr.slice(0, pos);
+        const after = dArr.slice(pos + removedLen);
+        const insArr = Array.from(insertedText).map(ch => ({ id: generateCharId(), char: ch }));
+        updated = [...before, ...insArr, ...after];
+      } else {
+        // Pure remove or insert specs
+        for (let spec of autoSpecs) {
+          const pos = findSegmentIndex(idArr, spec.segmentIds);
+          if (pos < 0) return;
+          if (spec.type === 'remove') {
+            updated = [...updated.slice(0, pos), ...updated.slice(pos + removedLen)];
+          } else if (spec.type === 'insert') {
+            const insArr = Array.from(insertedText).map(ch => ({ id: generateCharId(), char: ch }));
+            const insPos = pos + spec.relOffset;
+            updated = [...updated.slice(0, insPos), ...insArr, ...updated.slice(insPos)];
+          }
         }
       }
 
-      const key = updated.map(c=>c.id).join(",");
+      const key = updated.map(c => c.id).join(",");
       if (!seen.has(key)) {
         seen.add(key);
         newDraftsArr.push(updated);
@@ -171,31 +193,97 @@ export default function EditPermutationUI() {
   }
 
   function handleSelect() {
-    const sel=window.getSelection(); if (!sel||!sel.toString()) return;
-    const txt=sel.toString(), multi=window.event.ctrlKey||window.event.metaKey;
-    setConditionParts(c=>multi?[...c,txt]:[txt]); sel.removeAllRanges();
+    const sel = window.getSelection();
+    if (!sel || !sel.toString()) return;
+    const txt = sel.toString();
+    const multi = window.event.ctrlKey || window.event.metaKey;
+    setConditionParts(prev => (multi ? [...prev, txt] : [txt]));
+    sel.removeAllRanges();
   }
 
   return (
     <div className="p-4 space-y-6 text-gray-800">
       <h1 className="text-2xl font-bold">Edit Permutation UI</h1>
+
+      {/* STEP 1: Initial Draft Input */}
       <div className="space-y-2">
         <label>Initial Draft:</label>
-        <textarea value={defaultDraft} onChange={e=>setDefaultDraft(e.target.value)} className="w-full p-2 border rounded" placeholder="Type starting text…"/>
-        <button onClick={initializeDraft} className="bg-green-600 text-white px-4 py-2 rounded">Set Initial Draft</button>
+        <textarea
+          value={defaultDraft}
+          onChange={e => setDefaultDraft(e.target.value)}
+          className="w-full p-2 border rounded"
+          placeholder="Type starting text…"
+        />
+        <button onClick={initializeDraft} className="bg-green-600 text-white px-4 py-2 rounded">
+          Set Initial Draft
+        </button>
       </div>
-      {stringDrafts.length>0&&<>
-        <div><h2 className="text-xl font-semibold">All Drafts:</h2>
-          <ul className="flex flex-wrap gap-2">{stringDrafts.map((t,i)=><li key={i} onClick={()=>{setSelectedDraft(drafts[i]);setCurrentEditText(t);}} className={`px-2 py-1 rounded cursor-pointer ${drafts[i]===selectedDraft?'bg-blue-200':'bg-gray-100'}`}>{t}</li>)}</ul>
-        </div>
-        <div><h2 className="text-xl font-semibold">Selected Draft:</h2>
-          <textarea ref={draftBoxRef} onMouseUp={handleSelect} value={currentEditText} onChange={e=>setCurrentEditText(e.target.value)} className="w-full p-2 border rounded whitespace-pre-wrap min-h-[80px]"/>
-          <div className="mt-2">Conditions: {conditionParts.length?conditionParts.join(', '):'(none)'}</div>
-          <div className="space-x-2 mt-4"><button onClick={applyEdit} className="bg-blue-600 text-white px-4 py-2 rounded">Submit Edit</button><button onClick={undo} className="bg-gray-200 px-4 py-2 rounded">Undo</button><button onClick={redo} className="bg-gray-200 px-4 py-2 rounded">Redo</button></div>
-        </div>
-        <div><h2 className="text-xl font-semibold">Version Graph:</h2>
-          <VersionGraph drafts={stringDrafts} edges={stringEdges} onNodeClick={t=>{const idx=stringDrafts.indexOf(t);if(idx>=0){setSelectedDraft(drafts[idx]);setCurrentEditText(t);}}}/>
-        </div>
-      </>}</div>
+
+      {/* STEP 2: Display & Edit Drafts */}
+      {stringDrafts.length > 0 && (
+        <>
+          <div>
+            <h2 className="text-xl font-semibold">All Drafts:</h2>
+            <ul className="flex flex-wrap gap-2">
+              {stringDrafts.map((text, i) => (
+                <li
+                  key={i}
+                  onClick={() => {
+                    setSelectedDraft(drafts[i]);
+                    setCurrentEditText(text);
+                    setConditionParts([]);
+                  }}
+                  className={`px-2 py-1 rounded cursor-pointer ${
+                    drafts[i] === selectedDraft ? 'bg-blue-200' : 'bg-gray-100'
+                  }`}
+                >
+                  {text}
+                </li>
+              ))}
+            </ul>
+          </div>
+
+          <div>
+            <h2 className="text-xl font-semibold">Selected Draft (edit freely):</h2>
+            <textarea
+              ref={draftBoxRef}
+              onMouseUp={handleSelect}
+              value={currentEditText}
+              onChange={e => setCurrentEditText(e.target.value)}
+              className="w-full p-2 border rounded whitespace-pre-wrap min-h-[80px]"
+            />
+            <div className="mt-2">
+              Conditions: {conditionParts.length ? conditionParts.join(', ') : '(none)'}
+            </div>
+            <div className="space-x-2 mt-4">
+              <button onClick={applyEdit} className="bg-blue-600 text-white px-4 py-2 rounded">
+                Submit Edit
+              </button>
+              <button onClick={undo} className="bg-gray-200 px-4 py-2 rounded">
+                Undo (Ctrl+Z)
+              </button>
+              <button onClick={redo} className="bg-gray-200 px-4 py-2 rounded">
+                Redo (Ctrl+Y)
+              </button>
+            </div>
+          </div>
+
+          <div>
+            <h2 className="text-xl font-semibold">Version Graph:</h2>
+            <VersionGraph
+              drafts={stringDrafts}
+              edges={stringEdges}
+              onNodeClick={text => {
+                const idx = stringDrafts.indexOf(text);
+                if (idx >= 0) {
+                  setSelectedDraft(drafts[idx]);
+                  setCurrentEditText(text);
+                }
+              }}
+            />
+          </div>
+        </>
+      )}
+    </div>
   );
 }
