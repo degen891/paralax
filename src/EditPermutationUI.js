@@ -126,7 +126,7 @@ export default function EditPermutationUI() {
     const oldText = charArrayToString(oldArr);
     const newText = currentEditText;
 
-    // Compute diff boundaries
+    // compute diff boundaries
     let prefixLen = 0;
     const maxPref = Math.min(oldText.length, newText.length);
     while (prefixLen < maxPref && oldText[prefixLen] === newText[prefixLen]) prefixLen++;
@@ -141,22 +141,14 @@ export default function EditPermutationUI() {
     const removedIds = removedLen > 0 ? oldArr.slice(prefixLen, prefixLen + removedLen).map(c => c.id) : [];
     const insertedText = newText.slice(prefixLen, newText.length - suffixLen);
 
-    // Determine condition ID sequences
-    const condSeqs = conditionParts.length
-      ? conditionParts
-      : (removedIds.length
-          ? [removedIds]
-          : getAutoConditionsIds(oldArr, prefixLen, removedLen));
-
     const newDraftsArr = [...drafts];
     const newEdges = [];
     const seen = new Set(newDraftsArr.map(d => d.map(c => c.id).join(",")));
 
     drafts.forEach(dArr => {
-      if (!condSeqs.every(seq => findIdSeqPositions(dArr, seq).length > 0)) return;
       const variants = [];
 
-      // REMOVALS
+      // REMOVAL: always by exact ID
       if (removedIds.length) {
         findIdSeqPositions(dArr, removedIds).forEach(pos => {
           variants.push([
@@ -166,18 +158,26 @@ export default function EditPermutationUI() {
         });
       }
 
-      // INSERTIONS
+      // INSERTION
       if (insertedText) {
-        condSeqs.forEach(seq => {
-          findIdSeqPositions(dArr, seq).forEach(pos => {
-            const insArr = Array.from(insertedText).map(ch => ({ id: generateCharId(), char: ch }));
+        const insArr = Array.from(insertedText).map(ch => ({ id: generateCharId(), char: ch }));
+        if (!removedIds.length) {
+          // pure insertion: at prefixLen
+          variants.push([
+            ...dArr.slice(0, prefixLen),
+            ...insArr,
+            ...dArr.slice(prefixLen)
+          ]);
+        } else {
+          // insertion at exact removal positions
+          findIdSeqPositions(dArr, removedIds).forEach(pos => {
             variants.push([
-              ...dArr.slice(0, pos + seq.length),
+              ...dArr.slice(0, pos),
               ...insArr,
-              ...dArr.slice(pos + seq.length)
+              ...dArr.slice(pos)
             ]);
           });
-        });
+        }
       }
 
       variants.forEach(updated => {
@@ -188,6 +188,18 @@ export default function EditPermutationUI() {
           newEdges.push({ from: dArr, to: updated });
         }
       });
+    });
+
+    if (newEdges.length) {
+      saveHistory(newDraftsArr, newEdges);
+      setSelectedDraft(newDraftsArr[newDraftsArr.length - 1]);
+    }
+
+    // Clear conditions
+    setConditionParts([]);
+    setHighlightedIds([]);
+  }
+  });
     });
 
     if (newEdges.length) {
