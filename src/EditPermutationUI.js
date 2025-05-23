@@ -25,6 +25,40 @@ export default function EditPermutationUI() {
   const [selectionRange, setSelectionRange] = useState([0, 0]);
   const [conditionRanges, setConditionRanges] = useState([]);
 
+  // Auto-condition ranges based on sentence context
+  function getAutoConditionRanges(text, prefix, removedLen) {
+    const beforePara = text.lastIndexOf("
+", prefix - 1);
+    const afterPara = text.indexOf("
+", prefix + removedLen);
+    const paraStart = beforePara + 1;
+    const paraEnd = afterPara === -1 ? text.length : afterPara;
+    const paragraph = text.slice(paraStart, paraEnd);
+    const regex = /[^.?!;:]+[.?!;:]/g;
+    const ranges = [];
+    let match;
+    while ((match = regex.exec(paragraph)) !== null) {
+      const s = paraStart + match.index;
+      const e = s + match[0].length;
+      // only include if overlaps removal region
+      if (!(prefix + removedLen <= s || prefix >= e)) {
+        ranges.push([s, e]);
+      }
+    }
+    if (!ranges.length) {
+      ranges.push([paraStart, paraEnd]);
+    }
+    return ranges;
+  }
+
+export default function EditPermutationUI() {
+  const [defaultDraft, setDefaultDraft] = useState("");
+  const [drafts, setDrafts] = useState([]);
+  const [selectedDraft, setSelectedDraft] = useState([]);
+  const [currentEditText, setCurrentEditText] = useState("");
+  const [selectionRange, setSelectionRange] = useState([0, 0]);
+  const [conditionRanges, setConditionRanges] = useState([]);
+
   // Derived plain-text drafts
   const stringDrafts = drafts.map(arr => charArrayToString(arr));
 
