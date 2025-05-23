@@ -236,18 +236,15 @@ export default function EditPermutationUI() {
         suppressContentEditableWarning
         onInput={e => setCurrentEditText(e.currentTarget.textContent)}
         onMouseUp={handleSelect}
+        onKeyUp={handleSelect}
         className="w-full p-2 border rounded whitespace-pre-wrap min-h-[80px] cursor-text"
       >
         {arr.map(c => (
-          <span key={c.id} data-id={c.id} className={highlightedIds.includes(c.id) ? 'bg-yellow-200' : ''}>
-            {c.char}
-          </span>
+          <span key={c.id} data-id={c.id} className={highlightedIds.includes(c.id) ? 'bg-yellow-200' : ''}>{c.char}</span>
         ))}
       </div>
     );
   }
-
-  return (
     <div className="p-4 space-y-6 text-gray-800">
       <h1 className="text-2xl font-bold">Edit Permutation UI</h1>
 
