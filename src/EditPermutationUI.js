@@ -53,7 +53,7 @@ function getAutoConditions(arr, offset, removedLen) {
     const globalStart = paraStart + localStart;
     const globalEnd = paraStart + localEnd;
     // Check if edit falls within this sentence
-    if (offset >= globalStart && offset <= globalEnd) {
+    if (offset >= globalStart && offset < globalEnd) {
       const segmentIds = arr.slice(globalStart, globalEnd).map(c => c.id);
       const relOffset = offset - globalStart;
       return [{ type: 'insert', segmentIds, relOffset }];
