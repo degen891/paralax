@@ -182,15 +182,13 @@ export default function EditPermutationUI() {
         setSelectedDraft(matched.to);
         setCurrentEditText(charArrayToString(matched.to));
       }
-      setConditionParts([]);
-      return;
     }
       setConditionParts([]);
       return;
     }
 
     // 2) Otherwise, use ID-based auto-conditions as before
-    const autoSpecs = getAutoConditions(oldArr, prefixLen, removedLen);(oldArr, prefixLen, removedLen);
+    const autoSpecs = getAutoConditions(oldArr, prefixLen, removedLen);
 
     const newDraftsArr = [...drafts];
     const newEdges = [];
