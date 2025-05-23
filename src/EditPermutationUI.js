@@ -17,30 +17,45 @@ function idSeqExists(idArr, seq) {
   for (let i = 0; i + seq.length <= idArr.length; i++) {
     let match = true;
     for (let j = 0; j < seq.length; j++) {
-      if (idArr[i + j] !== seq[j]) { match = false; break; }
+      if (idArr[i + j] !== seq[j]) {
+        match = false;
+        break;
+      }
     }
     if (match) return true;
   }
   return false;
 }
 
+// Find exact index of a subsequence of IDs in an ID array
+function findSegmentIndex(idArr, segmentIds) {
+  for (let i = 0; i + segmentIds.length <= idArr.length; i++) {
+    let match = true;
+    for (let j = 0; j < segmentIds.length; j++) {
+      if (idArr[i + j] !== segmentIds[j]) {
+        match = false;
+        break;
+      }
+    }
+    if (match) return i;
+  }
+  return -1;
+}
+
 // Auto-conditions based on ID tracking
 function getAutoConditions(arr, offset, removedLen) {
   const conds = [];
   const text = charArrayToString(arr);
-
-  // Remove-condition: segment IDs of removed text
+  // Removal: exact segment IDs
   if (removedLen > 0) {
     const segmentIds = arr.slice(offset, offset + removedLen).map(c => c.id);
     conds.push(segmentIds);
-  }
-  // In-sentence insertion: entire sentence IDs
-  else {
-    // Determine paragraph boundaries
-    const beforeParaIndex = text.lastIndexOf("\n", offset - 1);
-    const afterParaIndex = text.indexOf("\n", offset + removedLen);
-    const paraStart = beforeParaIndex + 1;
-    const paraEnd = afterParaIndex === -1 ? text.length : afterParaIndex;
+  } else {
+    // In-sentence insertion: entire sentence IDs
+    const beforePara = text.lastIndexOf("\n", offset - 1);
+    const afterPara = text.indexOf("\n", offset + removedLen);
+    const paraStart = beforePara + 1;
+    const paraEnd = afterPara === -1 ? text.length : afterPara;
     const paragraph = text.slice(paraStart, paraEnd);
     const sentenceRegex = /[^.?!;:]+[.?!;:]/g;
     let match;
@@ -58,36 +73,23 @@ function getAutoConditions(arr, offset, removedLen) {
 }
 
 export default function EditPermutationUI() {
-  // 1️⃣ Raw initial draft text
   const [defaultDraft, setDefaultDraft] = useState("");
-
-  // 2️⃣ Drafts stored as arrays of {id, char}
   const [drafts, setDrafts] = useState([]);
   const [selectedDraft, setSelectedDraft] = useState([]);
-
-  // 3️⃣ Free-form edit buffer
   const [currentEditText, setCurrentEditText] = useState("");
-
-  // 4️⃣ Conditions & highlights
   const [conditionParts, setConditionParts] = useState([]);
   const [highlighted, setHighlighted] = useState([]);
-
-  // 5️⃣ Undo/redo history
   const [history, setHistory] = useState([]);
   const [redoStack, setRedoStack] = useState([]);
-
-  // 6️⃣ Version graph edges
   const [graphEdges, setGraphEdges] = useState([]);
   const draftBoxRef = useRef(null);
 
-  // Derived: plain-text drafts and edges for VersionGraph
   const stringDrafts = drafts.map(arr => charArrayToString(arr));
   const stringEdges = graphEdges.map(({ from, to }) => ({
     from: from ? charArrayToString(from) : null,
     to: charArrayToString(to),
   }));
 
-  // Keyboard handlers for undo/redo
   useEffect(() => {
     const handleKey = e => {
       if (e.ctrlKey && e.key === "z") { e.preventDefault(); undo(); }
@@ -97,7 +99,6 @@ export default function EditPermutationUI() {
     return () => window.removeEventListener("keydown", handleKey);
   }, [history, redoStack, drafts]);
 
-  // Save history and update drafts/edges
   function saveHistory(newDrafts, newEdges) {
     setHistory(h => [...h, drafts]);
     setRedoStack([]);
@@ -105,7 +106,6 @@ export default function EditPermutationUI() {
     setGraphEdges(g => [...g, ...newEdges]);
   }
 
-  // Undo last change
   function undo() {
     if (!history.length) return;
     const prev = history[history.length - 1];
@@ -116,7 +116,6 @@ export default function EditPermutationUI() {
     setCurrentEditText(charArrayToString(prev[0] || []));
   }
 
-  // Redo last undone change
   function redo() {
     if (!redoStack.length) return;
     const next = redoStack[0];
@@ -127,7 +126,6 @@ export default function EditPermutationUI() {
     setCurrentEditText(charArrayToString(next[0] || []));
   }
 
-  // Initialize drafts from raw text
   function initializeDraft() {
     if (!defaultDraft.trim()) return;
     const arr = Array.from(defaultDraft).map(ch => ({ id: generateCharId(), char: ch }));
@@ -141,7 +139,6 @@ export default function EditPermutationUI() {
     setHighlighted([]);
   }
 
-  // Find substring positions in a CharObj[]
   function findAllIndices(arr, sub) {
     const base = charArrayToString(arr);
     const positions = [];
@@ -153,13 +150,11 @@ export default function EditPermutationUI() {
     return positions;
   }
 
-  // Apply an edit suggestion across all drafts
   function applyEdit() {
     const oldArr = selectedDraft;
     const oldText = charArrayToString(oldArr);
     const newText = currentEditText;
 
-    // 1️⃣ Compute longest common prefix/suffix
     let prefixLen = 0;
     const maxPrefix = Math.min(oldText.length, newText.length);
     while (prefixLen < maxPrefix && oldText[prefixLen] === newText[prefixLen]) prefixLen++;
@@ -170,7 +165,6 @@ export default function EditPermutationUI() {
       oldText[oldText.length - 1 - suffixLen] === newText[newText.length - 1 - suffixLen]
     ) suffixLen++;
 
-    // 2️⃣ Extract removal/insertion info
     const removedLen = oldText.length - prefixLen - suffixLen;
     const removedText = oldText.slice(prefixLen, oldText.length - suffixLen);
     const insertedText = newText.slice(prefixLen, newText.length - suffixLen);
@@ -180,20 +174,17 @@ export default function EditPermutationUI() {
     const isParagraphAddition = ins.includes("\n");
     const isInSentenceInsertion = removedLen === 0 && ins.length > 0 && !isSentenceAddition && !isParagraphAddition;
 
-    // 3️⃣ Auto-conditions for proper scoping (ID-based)
     let autoConds = [];
     if (removedLen > 0 || isInSentenceInsertion) {
       autoConds = getAutoConditions(oldArr, offset, removedLen);
     }
     const combinedConds = [...autoConds, ...conditionParts];
 
-    // 4️⃣ Generate all permutations
     const newDraftsArr = [...drafts];
     const newEdges = [];
     const seen = new Set(newDraftsArr.map(d => d.map(c => c.id).join(",")));
 
     drafts.forEach(dArr => {
-      // Enforce ID-based and text-based conditions
       if (combinedConds.length) {
         const idArr = dArr.map(c => c.id);
         const meets = combinedConds.every(cond => {
@@ -209,20 +200,10 @@ export default function EditPermutationUI() {
       let updated = [...dArr];
 
       if (removedLen > 0) {
-        // Removal at the specified occurrence
-        const positions = findAllIndices(dArr, removedText);
-        const pos = positions[combinedConds.length && Array.isArray(autoConds[0]) ? 
-          // if auto-cond removal, find index of matching segment in idArr
-          (() => {
-            const idArr = dArr.map(c => c.id);
-            const segment = autoConds[0];
-            // find exact match index
-            for (let i = 0; i + segment.length <= idArr.length; i++) {
-              if (idSeqExists(idArr.slice(i), segment)) return i;
-            }
-            return undefined;
-          })() : findAllIndices(dArr, removedText).length ? findAllIndices(dArr, removedText)[0] : 0 ] : findAllIndices(dArr, removedText)[0];
-        if (pos === undefined) return;
+        const idArr = dArr.map(c => c.id);
+        const segmentIds = autoConds[0];
+        const pos = findSegmentIndex(idArr, Array.isArray(segmentIds) ? segmentIds : idArr.slice(offset, offset + removedLen));
+        if (pos < 0) return;
         const before = dArr.slice(0, pos);
         const after = dArr.slice(pos + removedLen);
         const insArr = Array.from(insertedText).map(ch => ({ id: generateCharId(), char: ch }));
@@ -248,7 +229,6 @@ export default function EditPermutationUI() {
     setCurrentEditText(charArrayToString(selectedDraft));
   }
 
-  // Handle manual selection to add extra conditions (text-based)
   function handleSelect() {
     const sel = window.getSelection();
     if (!sel || !sel.toString()) return;
@@ -259,12 +239,10 @@ export default function EditPermutationUI() {
     sel.removeAllRanges();
   }
 
-  // --- UI rendering ---
   return (
     <div className="p-4 space-y-6 text-gray-800">
       <h1 className="text-2xl font-bold">Edit Permutation UI</h1>
 
-      {/* STEP 1: Initial Draft Input */}
       <div className="space-y-2">
         <label>Initial Draft:</label>
         <textarea
@@ -273,15 +251,11 @@ export default function EditPermutationUI() {
           className="w-full p-2 border rounded"
           placeholder="Type starting text…"
         />
-        <button
-          onClick={initializeDraft}
-          className="bg-green-600 text-white px-4 py-2 rounded"
-        >
+        <button onClick={initializeDraft} className="bg-green-600 text-white px-4 py-2 rounded">
           Set Initial Draft
         </button>
       </div>
 
-      {/* STEP 2: Display & Edit Drafts */}
       {stringDrafts.length > 0 && (
         <>
           <div>
@@ -315,34 +289,22 @@ export default function EditPermutationUI() {
               onChange={e => setCurrentEditText(e.target.value)}
               className="w-full p-2 border rounded whitespace-pre-wrap min-h-[80px]"
             />
-            <div className="mt-2">Conditions: {conditionParts.length ? conditionParts.join(', ') : '(none)'}
-            </div>
+            <div className="mt-2">Conditions: {conditionParts.length ? conditionParts.join(', ') : '(none)'}</div>
             <div className="space-x-2 mt-4">
               <button onClick={applyEdit} className="bg-blue-600 text-white px-4 py-2 rounded">
                 Submit Edit
               </button>
-              <button onClick={undo} className="bg-gray-200 px-4 py-2 rounded">
-                Undo (Ctrl+Z)
-              </button>
-              <button onClick={redo} className="bg-gray-200 px-4 py-2 rounded">
-                Redo (Ctrl+Y)
-              </button>
+              <button onClick={undo} className="bg-gray-200 px-4 py-2 rounded">Undo (Ctrl+Z)</button>
+              <button onClick={redo} className="bg-gray-200 px-4 py-2 rounded">Redo (Ctrl+Y)</button>
             </div>
           </div>
 
           <div>
             <h2 className="text-xl font-semibold">Version Graph:</h2>
-            <VersionGraph
-              drafts={stringDrafts}
-              edges={stringEdges}
-              onNodeClick={text => {
-                const idx = stringDrafts.indexOf(text);
-                if (idx >= 0) {
-                  setSelectedDraft(drafts[idx]);
-                  setCurrentEditText(text);
-                }
-              }}
-            />
+            <VersionGraph drafts={stringDrafts} edges={stringEdges} onNodeClick={text => {
+              const idx = stringDrafts.indexOf(text);
+              if (idx >= 0) { setSelectedDraft(drafts[idx]); setCurrentEditText(text); }
+            }} />
           </div>
         </>
       )}
