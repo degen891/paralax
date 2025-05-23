@@ -163,8 +163,9 @@ export default function EditPermutationUI() {
       const newEdges = [];
       const seenKeys = new Set(newDrafts.map(d => d.map(c => c.id).join(",")));
       drafts.forEach(dArr => {
-        // If user-selected conditions exist, only apply to the current selected draft
-        if (conditionParts.length && dArr !== selectedDraft) return;
+        // Enforce user-selected conditions for pure sentence additions
+        const idArr = dArr.map(c => c.id);
+        if (conditionParts.length && !conditionParts.every(cond => idSeqExists(idArr, cond))) return;
         const before = dArr.slice(0, prefixLen);
         const after = dArr.slice(prefixLen);
         const insArr = Array.from(insertedText).map(ch => ({ id: generateCharId(), char: ch }));
@@ -238,26 +239,16 @@ export default function EditPermutationUI() {
   }
 
   // Capture user selection as ID condition
-  // Capture user selection as ID condition
   function handleSelect() {
-    const sel = window.getSelection();
-    if (!sel || !sel.toString()) return;
-    const txt = sel.toString();
-    const multi = window.event.ctrlKey || window.event.metaKey;
-    // Determine the draft array matching the textarea content
-    const idx = stringDrafts.indexOf(currentEditText);
-    const baseArr = idx >= 0 ? drafts[idx] : selectedDraft;
-    // Sync selectedDraft if necessary
-    if (idx >= 0) setSelectedDraft(baseArr);
-    // Capture selection range in textarea
     const area = draftBoxRef.current;
     if (!area) return;
     const start = area.selectionStart;
     const end = area.selectionEnd;
     if (start == null || end == null || start === end) return;
-    const segmentIds = baseArr.slice(start, end).map(c => c.id);
-    setConditionParts(prev => (multi ? [...prev, segmentIds] : [segmentIds]));
-    // Collapse selection
+    const multi = window.event.ctrlKey || window.event.metaKey;
+    const segmentIds = selectedDraft.slice(start, end).map(c => c.id);
+    setConditionParts(prev => multi ? [...prev, segmentIds] : [segmentIds]);
+    // collapse selection to end
     area.setSelectionRange(end, end);
   }
 
