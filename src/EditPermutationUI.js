@@ -71,6 +71,17 @@ export default function EditPermutationUI() {
     setCurrentEditText(charArrayToString(selectedDraft));
   }, [selectedDraft]);
 
+  // Capture selection after mouse or keyboard events
+  useEffect(() => {
+    const capture = () => handleSelect();
+    document.addEventListener('mouseup', capture);
+    document.addEventListener('keyup', capture);
+    return () => {
+      document.removeEventListener('mouseup', capture);
+      document.removeEventListener('keyup', capture);
+    };
+  }, [selectedDraft, drafts]);
+
   // Undo/Redo keyboard handlers
   useEffect(() => {
     const handleKey = e => {
