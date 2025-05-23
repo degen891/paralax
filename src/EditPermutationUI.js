@@ -40,23 +40,31 @@ function getAutoConditions(arr, offset, removedLen) {
   // Determine paragraph boundaries
   const beforePara = text.lastIndexOf("
 ", offset - 1);
-  const afterPara = text.indexOf("
+    const afterPara = text.indexOf("
 ", offset);
-  const paraStart = beforePara + 1;
-  const paraEnd = afterPara === -1 ? text.length : afterPara;
-  const paragraph = text.slice(paraStart, paraEnd);
-  // Split into sentences by punctuation
-  const sentenceRegex = /[^.?!;:]+[.?!;:]/g;
-  let match;
-  while ((match = sentenceRegex.exec(paragraph)) !== null) {
-    const sentenceText = match[0];
-    const localStart = match.index;
-    const localEnd = localStart + sentenceText.length;
-    const globalStart = paraStart + localStart;
-    const globalEnd = paraStart + localEnd;
-    // Check if edit falls within this sentence
-    if (offset >= globalStart && offset <= globalEnd) {
-      const segmentIds = arr.slice(globalStart, globalEnd).map(c => c.id);
+    const paraStart = beforePara + 1;
+    const paraEnd = afterPara === -1 ? text.length : afterPara;
+    const paragraph = text.slice(paraStart, paraEnd);
+    // Split into sentences by punctuation
+    const sentenceRegex = /[^.?!;:]+[.?!;:]/g;
+    let match;
+    while ((match = sentenceRegex.exec(paragraph)) !== null) {
+      const sentenceText = match[0];
+      const localStart = match.index;
+      const localEnd = localStart + sentenceText.length;
+      const globalStart = paraStart + localStart;
+      const globalEnd = paraStart + localEnd;
+      // Check if edit falls within this sentence
+      if (offset >= globalStart && offset <= globalEnd) {
+        const segmentIds = arr.slice(globalStart, globalEnd).map(c => c.id);
+        const relOffset = offset - globalStart;
+        return [{ type: 'insert', segmentIds, relOffset }];
+      }
+    }
+    // Fallback to paragraph-level
+    const segIds = arr.slice(paraStart, paraEnd).map(c => c.id);
+    const relOffset = offset - paraStart;
+    return [{ type: 'insert', segmentIds: segIds, relOffset }];
       const relOffset = offset - globalStart;
       return [{ type: 'insert', segmentIds, relOffset }];
     }
@@ -66,28 +74,7 @@ function getAutoConditions(arr, offset, removedLen) {
   const relOffset = offset - paraStart;
   return [{ type: 'insert', segmentIds: segIds, relOffset }];
 }
-  // In-sentence insertion
-  const beforePara = text.lastIndexOf("\n", offset - 1);
-  const afterPara = text.indexOf("\n", offset);
-  const paraStart = beforePara + 1;
-  const paraEnd = afterPara === -1 ? text.length : afterPara;
-  const paragraph = text.slice(paraStart, paraEnd);
-  const sentenceRegex = /[^.?!;:]+[.?!;:]/g;
-  let match;
-  while ((match = sentenceRegex.exec(paragraph)) !== null) {
-    const sentStart = paraStart + match.index;
-    const sentEnd = sentStart + match[0].length;
-    if (offset >= sentStart && offset <= sentEnd) {
-      const segmentIds = arr.slice(sentStart, sentEnd).map(c => c.id);
-      const relOffset = offset - sentStart;
-      return [{ type: 'insert', segmentIds, relOffset }];
-    }
   }
-  // Paragraph fallback
-  const segIds = arr.slice(paraStart, paraEnd).map(c => c.id);
-  const relOffset = offset - paraStart;
-  return [{ type: 'insert', segmentIds: segIds, relOffset }];
-}
 
 export default function EditPermutationUI() {
   // State variables
