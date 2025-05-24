@@ -13,8 +13,7 @@ function charArrayToString(arr) {
 
 // Helper function to check if a draft is effectively empty
 function isDraftContentEmpty(arr) {
-  const text = charArrayToString(arr);
-//
+  const text = charArrayToString(arr); //
 const trimmedText = text.trim();
   if (trimmedText.length === 0) {
     return true;
@@ -40,14 +39,12 @@ break; }
 
 // Check if sequence exists in ID array
 function idSeqExists(idArr, seq) {
-  return findSegmentIndex(idArr, seq) >= 0;
-//
+  return findSegmentIndex(idArr, seq) >= 0; //
 }
 
 // Auto-conditions: specs for removal or insertion
 function getAutoConditions(arr, offset, removedLen) {
-  const text = charArrayToString(arr);
-//
+  const text = charArrayToString(arr); //
 if (removedLen > 0) {
     const segmentIds = arr.slice(offset, offset + removedLen).map(c => c.id);
 return [{ type: 'remove', segmentIds }];
@@ -70,7 +67,7 @@ if (offset >= globalStart && offset < globalEnd) {
       const segmentIds = arr.slice(globalStart, globalEnd).map(c => c.id);
 const relOffset = offset - globalStart;
       return [{ type: 'insert', segmentIds, relOffset }];
-}
+    }
 }
   const segIds = arr.slice(paraStart, paraEnd).map(c => c.id);
 const relOffset = offset - paraStart;
@@ -99,8 +96,7 @@ useEffect(() => {
     };
     window.addEventListener("keydown", handleKey);
     return () => window.removeEventListener("keydown", handleKey);
-  }, [history, redoStack, drafts]);
-//
+  }, [history, redoStack, drafts]); //
 function saveHistory(newDrafts, newEdges) {
     setHistory(h => [...h, drafts]);
     setRedoStack([]);
@@ -115,8 +111,7 @@ setRedoStack(r => [drafts, ...r]);
     setHistory(h => h.slice(0, -1));
     setDrafts(prev);
     setSelectedDraft(prev[0] || []);
-    setCurrentEditText(charArrayToString(prev[0] || []));
-//
+    setCurrentEditText(charArrayToString(prev[0] || [])); //
 }
 
   function redo() {
@@ -126,8 +121,7 @@ setRedoStack(r => [drafts, ...r]);
 setRedoStack(r => r.slice(1));
     setDrafts(next);
     setSelectedDraft(next[0] || []);
-    setCurrentEditText(charArrayToString(next[0] || []));
-//
+    setCurrentEditText(charArrayToString(next[0] || [])); //
 }
 
   function initializeDraft() {
@@ -136,120 +130,41 @@ const arr = Array.from(defaultDraft).map(ch => ({ id: generateCharId(), char: ch
     setDrafts([arr]);
     setSelectedDraft(arr);
     setCurrentEditText(defaultDraft);
-setGraphEdges([{ from: null, to: arr }]);
+    setGraphEdges([{ from: null, to: arr }]);
 setHistory([]);
     setRedoStack([]);
     setConditionParts([]); 
   }
 
   function applyEdit() {
-    const oldArr = selectedDraft;
-const oldText = charArrayToString(oldArr); 
+    const oldArr = selectedDraft; 
+    const oldText = charArrayToString(oldArr); 
 const newText = currentEditText;  
 
     let prefixLen = 0;
-    const maxPref = Math.min(oldText.length, newText.length);
+    const maxPref = Math.min(oldText.length, newText.length); 
 while (prefixLen < maxPref && oldText[prefixLen] === newText[prefixLen]) prefixLen++; 
     let suffixLen = 0;
 while (
       suffixLen < oldText.length - prefixLen &&
       suffixLen < newText.length - prefixLen &&
       oldText[oldText.length - 1 - suffixLen] === newText[newText.length - 1 - suffixLen]
-    ) suffixLen++;
+    ) suffixLen++; 
 const removedLen = oldText.length - prefixLen - suffixLen;
-    const baseInsertedText = newText.slice(prefixLen, newText.length - suffixLen);
-    
-    let isSentenceAddition;
-
-    if (removedLen > 0) {
-      isSentenceAddition = false; 
-    } else {
-      const trimmedBaseInsertedText = baseInsertedText.trim();
-      const insertedTextIsSentenceStructurally = /^[^.?!;:]+[.?!;:]$/.test(trimmedBaseInsertedText);
-
-      if (oldText.length === 0) {
-        isSentenceAddition = true;
-      } else {
-        // --- MODIFICATION START: Refined locationStatus logic for sentence scope ---
-        let locationStatus = 'OUTSIDE'; // Default: insertion is outside any defined sentence content
-
-        const sentenceDefinitionRegex = /[^.?!;:]+[.?!;:]/g; 
-        let match;
-        sentenceDefinitionRegex.lastIndex = 0; 
-        
-        const sentencesFound = [];
-        while ((match = sentenceDefinitionRegex.exec(oldText)) !== null) {
-          sentencesFound.push({
-            text: match[0],
-            start: match.index,
-            end: match.index + match[0].length
-          });
-        }
-
-        if (sentencesFound.length > 0) {
-          for (const sentence of sentencesFound) {
-            const originalSentenceText = sentence.text;
-            const trimmedSentenceText = originalSentenceText.trim();
-
-            if (trimmedSentenceText.length === 0) continue; // Skip purely whitespace "sentences"
-
-            const leadingWhitespaceLength = originalSentenceText.indexOf(trimmedSentenceText[0]);
-            const effectiveContentStart = sentence.start + leadingWhitespaceLength;
-            const effectiveContentEnd = effectiveContentStart + trimmedSentenceText.length;
-
-            if (prefixLen === effectiveContentStart) {
-              locationStatus = 'AT_START_EFFECTIVE';
-              break;
-            }
-            if (prefixLen > effectiveContentStart && prefixLen < effectiveContentEnd) {
-              locationStatus = 'WITHIN_EFFECTIVE';
-              break;
-            }
-          }
-        } else if (oldText.trim().length > 0) {
-          // No formal sentences, but oldText has content. Treat oldText itself as the block.
-          const trimmedOldText = oldText.trim(); // [cite: 5]
-          const leadingWhitespaceLength = oldText.indexOf(trimmedOldText[0]);
-          const effectiveContentStart = leadingWhitespaceLength;
-          const effectiveContentEnd = effectiveContentStart + trimmedOldText.length;
-
-          if (prefixLen === effectiveContentStart) {
-            locationStatus = 'AT_START_EFFECTIVE';
-          } else if (prefixLen > effectiveContentStart && prefixLen < effectiveContentEnd) {
-            locationStatus = 'WITHIN_EFFECTIVE';
-          } else {
-            locationStatus = 'OUTSIDE'; // Relative to the trimmed content of oldText
-          }
-        }
-        // If oldText is all whitespace, locationStatus remains 'OUTSIDE'.
-        
-        if (locationStatus === 'WITHIN_EFFECTIVE') {
-          isSentenceAddition = false;
-        } else if (locationStatus === 'AT_START_EFFECTIVE') {
-          if (insertedTextIsSentenceStructurally) {
-            isSentenceAddition = true; 
-          } else {
-            isSentenceAddition = false; 
-          }
-        } else { // locationStatus === 'OUTSIDE'
-          isSentenceAddition = true;
-        }
-        // --- MODIFICATION END ---
-      }
-    }
-    
+    const baseInsertedText = newText.slice(prefixLen, newText.length - suffixLen); 
 const isReplacement = removedLen > 0 && baseInsertedText.length > 0;
-
-if (isSentenceAddition) { 
+    const isSentenceAddition = removedLen === 0 && /^[^.?!;:]+[.?!;:]$/.test(baseInsertedText.trim()); 
+if (isSentenceAddition) {
       const uniquePrecedingContextIds = [...new Set(oldArr.slice(0, prefixLen).map(c => c.id))];
 
-      const newDrafts = [...drafts];
-const newEdges = []; 
+      const newDrafts = [...drafts]; 
+      const newEdges = []; 
       const seenKeys = new Set(newDrafts.map(d => d.map(c => c.id).join(","))); 
       
-      const textToInsert = baseInsertedText;
-const masterInsArr = Array.from(textToInsert).map(ch => ({ id: generateCharId(), char: ch }));
-drafts.forEach(dArr => { 
+      const textToInsert = baseInsertedText; 
+      const masterInsArr = Array.from(textToInsert).map(ch => ({ id: generateCharId(), char: ch }));
+      
+      drafts.forEach(dArr => { 
         const targetIdArr = dArr.map(c => c.id);
         const targetDraftText = charArrayToString(dArr); 
 
@@ -260,16 +175,14 @@ drafts.forEach(dArr => {
         if (uniquePrecedingContextIds.length === 0) {
           anchorIdIndexInDArr = -2; 
         } else {
-         
- const precedingIdsSet = new Set(uniquePrecedingContextIds);
+          const precedingIdsSet = new Set(uniquePrecedingContextIds);
           for (let i = targetIdArr.length - 1; i >= 0; i--) { 
             if (precedingIdsSet.has(targetIdArr[i])) {
               anchorIdIndexInDArr = i; 
               break;
             }
           }
-      
-  }
+        }
 
         if (anchorIdIndexInDArr === -1 && uniquePrecedingContextIds.length > 0) {
           anchorIdIndexInDArr = -2; 
@@ -281,105 +194,107 @@ drafts.forEach(dArr => {
           insertionPointInDArr = 0;
         } else { 
           let effectiveAnchorForSentenceLookup = anchorIdIndexInDArr;
-if (anchorIdIndexInDArr >=0 && anchorIdIndexInDArr < targetDraftText.length) {
+          if (anchorIdIndexInDArr >=0 && anchorIdIndexInDArr < targetDraftText.length) {
             for (let k = anchorIdIndexInDArr; k >= 0; k--) {
               const char = targetDraftText.charAt(k);
-if (/[.?!;:]/.test(char)) { 
+              if (/[.?!;:]/.test(char)) { 
                 effectiveAnchorForSentenceLookup = k;
-break;
+                break;
               }
               if (!/\s|\n/.test(char)) { 
-                effectiveAnchorForSentenceLookup = k;
-break;
+                effectiveAnchorForSentenceLookup = k; 
+                break;
               }
               if (k === 0) {
-                effectiveAnchorForSentenceLookup = 0;
-}
+                effectiveAnchorForSentenceLookup = 0; 
+              }
             }
           }
           
           let anchorSegmentText = null;
-let anchorSegmentEndIndex = -1; 
-          const sentenceBoundaryRegex = /[^.?!;:\n]+(?:[.?!;:\n]|$)|[.?!;:\n]/g;
-let matchBoundary; // Renamed to avoid conflict with 'match' from outer scope
+          let anchorSegmentEndIndex = -1; 
+          // MODIFICATION: Restored the corrected sentenceBoundaryRegex
+          const sentenceBoundaryRegex = /[^.?!;:\n]+(?:[.?!;:\n]|$)|[.?!;:\n]/g; 
+          let match;
           sentenceBoundaryRegex.lastIndex = 0; 
-          while ((matchBoundary = sentenceBoundaryRegex.exec(targetDraftText)) !== null) {
-            const segmentStartIndex = matchBoundary.index;
-const segmentEndBoundary = matchBoundary.index + matchBoundary[0].length -1; 
+          while ((match = sentenceBoundaryRegex.exec(targetDraftText)) !== null) {
+            const segmentStartIndex = match.index;
+            const segmentEndBoundary = match.index + match[0].length -1; 
             
             if (effectiveAnchorForSentenceLookup >= segmentStartIndex && effectiveAnchorForSentenceLookup <= segmentEndBoundary) {
-              anchorSegmentText = matchBoundary[0];
-anchorSegmentEndIndex = segmentEndBoundary;
+              anchorSegmentText = match[0];
+              anchorSegmentEndIndex = segmentEndBoundary;
               break;
             }
           }
 
           if (anchorSegmentText !== null) {
             const trimmedSegment = anchorSegmentText.trim().replace(/\n$/, '');
-const isTrueSentence = /[.?!;:]$/.test(trimmedSegment);
+            const isTrueSentence = /[.?!;:]$/.test(trimmedSegment);
             if (isTrueSentence) {
               insertionPointInDArr = anchorSegmentEndIndex + 1;
-} else { 
-              insertionPointInDArr = anchorIdIndexInDArr + 1;
-}
+            } else { 
+              insertionPointInDArr = anchorIdIndexInDArr + 1; 
+            }
           } else { 
-            insertionPointInDArr = (anchorIdIndexInDArr >= 0 && anchorIdIndexInDArr < targetDraftText.length) ?
-anchorIdIndexInDArr + 1 : targetDraftText.length;
+            insertionPointInDArr = (anchorIdIndexInDArr >= 0 && anchorIdIndexInDArr < targetDraftText.length) ? anchorIdIndexInDArr + 1 : targetDraftText.length;
             if (insertionPointInDArr > targetDraftText.length) insertionPointInDArr = targetDraftText.length;
-}
+          }
           
           while (insertionPointInDArr < targetDraftText.length && targetDraftText.charAt(insertionPointInDArr) === '\n') {
               insertionPointInDArr++;
-}
+          }
         }
         
-        const insArr = masterInsArr;
-const before = dArr.slice(0, insertionPointInDArr);
+        const insArr = masterInsArr; 
+        
+        const before = dArr.slice(0, insertionPointInDArr);
         const after = dArr.slice(insertionPointInDArr);
         const updated = [...before, ...insArr, ...after];
-const key = updated.map(c => c.id).join(","); 
+        
+        const key = updated.map(c => c.id).join(","); 
         if (!seenKeys.has(key)) { 
           if (!isDraftContentEmpty(updated)) {  
-            seenKeys.add(key);
-newDrafts.push(updated); 
+            seenKeys.add(key); 
+            newDrafts.push(updated); 
             newEdges.push({ from: dArr, to: updated }); 
           }
         }
       });
-saveHistory(newDrafts, newEdges); 
-      const matched = newEdges.find(edge => edge.from === selectedDraft);
+      saveHistory(newDrafts, newEdges); 
+      const matched = newEdges.find(edge => edge.from === selectedDraft); 
 if (matched) {
         setSelectedDraft(matched.to); 
         setCurrentEditText(charArrayToString(matched.to)); 
       }
       setConditionParts([]); 
-      return;
-}
+      return; 
+    }
 
     const autoSpecs = getAutoConditions(oldArr, prefixLen, removedLen); 
     const newDraftsArr = [...drafts]; 
-    const newEdges = [];
+    const newEdges = []; 
 const seen = new Set(newDraftsArr.map(d => d.map(c => c.id).join(","))); 
     for (let dArr of drafts) { 
-      let updated = [...dArr];
+      let updated = [...dArr]; 
 const idArr = dArr.map(c => c.id);
-      if (conditionParts.length && !conditionParts.every(condObj => idSeqExists(idArr, condObj.ids))) continue;
+      if (conditionParts.length && !conditionParts.every(condObj => idSeqExists(idArr, condObj.ids))) continue; 
 if (isReplacement) { 
-        const { segmentIds } = autoSpecs[0];
+        const { segmentIds } = autoSpecs[0]; 
 const pos = findSegmentIndex(idArr, segmentIds); 
         if (pos < 0) continue;
         const before = dArr.slice(0, pos);
 const after = dArr.slice(pos + removedLen); 
-        const insArr = Array.from(baseInsertedText).map(ch => ({ id: generateCharId(), char: ch }));
+        const insArr = Array.from(baseInsertedText).map(ch => ({ id: generateCharId(), char: ch })); 
 updated = [...before, ...insArr, ...after];
       } else { 
         for (let spec of autoSpecs) { 
-          const pos = findSegmentIndex(idArr, spec.segmentIds);
+          const pos = findSegmentIndex(idArr, spec.segmentIds); 
 if (pos < 0) continue;
           if (spec.type === 'remove') { 
-            updated = [...updated.slice(0, pos), ...updated.slice(pos + spec.segmentIds.length)];
+            updated = [...updated.slice(0, pos), ...updated.slice(pos + removedLen)]; 
 } else { // spec.type === 'insert'
-            const insArr = Array.from(baseInsertedText).map(ch => ({ id: generateCharId(), char: ch }));
+            const insArr = Array.from(baseInsertedText).map(ch => ({ id: generateCharId(), char: ch })); 
 const insPos = pos + spec.relOffset; 
             updated = [...updated.slice(0, insPos), ...insArr, ...updated.slice(insPos)];
 }
@@ -389,21 +304,21 @@ const insPos = pos + spec.relOffset;
       const key = updated.map(c => c.id).join(",");
 if (!seen.has(key)) { 
         if (!isDraftContentEmpty(updated)) { 
-          seen.add(key);
+          seen.add(key); 
 newDraftsArr.push(updated);
           newEdges.push({ from: dArr, to: updated });
         }
       } 
     } 
 
-    saveHistory(newDraftsArr, newEdges);
+    saveHistory(newDraftsArr, newEdges); 
 if (newEdges.length === 1) {
       setSelectedDraft(newEdges[0].to); 
-      setCurrentEditText(charArrayToString(newEdges[0].to));
+      setCurrentEditText(charArrayToString(newEdges[0].to)); 
 } else {
       setCurrentEditText(charArrayToString(selectedDraft)); 
     }
-    setConditionParts([]);
+    setConditionParts([]); 
 }
 
   function handleSelect() {
@@ -414,21 +329,18 @@ const end = area.selectionEnd;
 if (start == null || end == null || start === end) return;
 const multi = window.event.ctrlKey || window.event.metaKey;
 const editedText = currentEditText; //
-    const oldArr = selectedDraft;
-//
+    const oldArr = selectedDraft; //
     const oldText = charArrayToString(oldArr); //
 const segText = editedText.slice(start, end); 
 let segmentIds = [];
-if (editedText === oldText) { //
+    if (editedText === oldText) { //
       segmentIds = oldArr.slice(start, end).map(c => c.id);
 } else {
       const indices = [];
-let idx = oldText.indexOf(segText);
-//
+let idx = oldText.indexOf(segText); //
 while (idx !== -1) {
         indices.push(idx);
-idx = oldText.indexOf(segText, idx + 1);
-//
+idx = oldText.indexOf(segText, idx + 1); //
 }
       if (indices.length === 0) return;
 let bestIdx = indices[0];
@@ -444,11 +356,9 @@ if (diff < bestDiff) {
 }
     if (!segmentIds.length) return;
 
-    const newConditionPart = { ids: segmentIds, text: segText };
-//
+    const newConditionPart = { ids: segmentIds, text: segText }; //
 setConditionParts(prev => multi ? [...prev, newConditionPart] : [newConditionPart]); 
-area.setSelectionRange(end, end);
-//
+area.setSelectionRange(end, end); //
 }
 
   const getConditionDisplayText = () => {
@@ -469,8 +379,7 @@ return (
           className="w-full p-2 border rounded"
 placeholder="Type starting text…"
         />
-        <button onClick={initializeDraft} className="bg-green-600 text-white 
-px-4 
+        <button onClick={initializeDraft} className="bg-green-600 text-white px-4 
 py-2 rounded">
           Set Initial Draft
         </button>
@@ -482,14 +391,12 @@ py-2 rounded">
 <h2 className="text-xl font-semibold">All Drafts:</h2>
             <ul className="flex flex-wrap gap-2">
               {stringDrafts.map((text, i) => ( //
-       
-   
+          
       <li
                   key={i}
                   onClick={() => { setSelectedDraft(drafts[i]); //
 setCurrentEditText(text); setConditionParts([]); }}  //
-                  className={`px-2 py-1 rounded cursor-pointer ${drafts[i] === selectedDraft ?
-//
+                  className={`px-2 py-1 rounded cursor-pointer ${drafts[i] === selectedDraft ? //
 'bg-blue-200' : 'bg-gray-100'}`}
                 >
                   {text}
@@ -500,7 +407,6 @@ setCurrentEditText(text); setConditionParts([]); }}  //
 
 <div>
             
-
 <h2 className="text-xl font-semibold">Selected Draft:</h2>
             <textarea
               ref={draftBoxRef} //
@@ -509,15 +415,13 @@ setCurrentEditText(text); setConditionParts([]); }}  //
               onChange={e => setCurrentEditText(e.target.value)} //
 className="w-full p-2 border rounded whitespace-pre-wrap min-h-[80px]"
             />
-      
-    
+          
   {/* MODIFICATION: Use helper function for display */}
             <div className="mt-2">Conditions: {getConditionDisplayText()}</div>
             <div className="flex space-x-2 mt-4">
               <button onClick={applyEdit} className="bg-blue-600 text-white px-4 py-2 rounded">Submit Edit</button>
               <button onClick={undo} className="bg-gray-200 px-4 py-2 rounded">Undo</button>
-              <button onClick={redo} className="bg-gray-200 px-4 
-py-2 rounded">Redo</button>
+              <button onClick={redo} className="bg-gray-200 px-4 py-2 rounded">Redo</button>
    
          </div>
           </div>
@@ -525,8 +429,7 @@ py-2 rounded">Redo</button>
 <div>
             <h2 className="text-xl font-semibold">Version Graph:</h2>
             <VersionGraph drafts={stringDrafts} edges={stringEdges} onNodeClick={text => { //
-              const idx = stringDrafts.indexOf(text);
-//
+              const idx = stringDrafts.indexOf(text); //
 if (idx >= 0) { setSelectedDraft(drafts[idx]); setCurrentEditText(text); } //
             }} />  
           </div>
