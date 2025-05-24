@@ -9,6 +9,7 @@ function generateCharId() {
 
 // Convert a CharObj[] to plain string
 function charArrayToString(arr) {
+  if (!arr) return ""; // Guard against null/undefined input
   return arr.map(c => c.char).join("");
 }
 
@@ -27,7 +28,7 @@ function isDraftContentEmpty(arr) {
 
 // Find exact index of a subsequence of IDs in an ID array
 function findSegmentIndex(idArr, segmentIds) {
-  if (segmentIds.length === 0) return 0; // Empty sequence is found at the start
+  if (segmentIds.length === 0) return 0;
   for (let i = 0; i + segmentIds.length <= idArr.length; i++) {
     let match = true;
     for (let j = 0; j < segmentIds.length; j++) {
@@ -43,9 +44,6 @@ function idSeqExists(idArr, seq) {
   return findSegmentIndex(idArr, seq) >= 0;
 }
 
-// MODIFICATION: New helper function to find original span of non-whitespace IDs
-// Finds a subsequence of non-whitespace character IDs within a charObjArray
-// and returns the original start and (end+1) indices in charObjArray.
 function findOriginalSpanOfNonWhitespaceIds(charObjArray, targetNonSpaceIds) {
   if (targetNonSpaceIds.length === 0) {
     return { start: 0, end: 0 };
@@ -68,7 +66,6 @@ function findOriginalSpanOfNonWhitespaceIds(charObjArray, targetNonSpaceIds) {
           return { start: originalStartIndex, end: lastMatchOriginalIndex + 1 };
         }
       } else {
-        // Reset if current char doesn't continue sequence, but check if it starts a new one
         targetIdx = 0;
         originalStartIndex = -1;
         if (targetNonSpaceIds.length > 0 && charObjArray[i].id === targetNonSpaceIds[0]) {
@@ -82,26 +79,20 @@ function findOriginalSpanOfNonWhitespaceIds(charObjArray, targetNonSpaceIds) {
       }
     }
   }
-  return null; // Not found
+  return null; 
 }
 
-
-// Auto-conditions: specs for removal or insertion
 function getAutoConditions(arr, offset, removedLen) {
-  const text = charArrayToString(arr); // Full text for context finding
+  const text = charArrayToString(arr); 
 
   if (removedLen > 0) {
     const removedSegmentChars = arr.slice(offset, offset + removedLen);
     const segmentIds = removedSegmentChars
       .filter(c => !/[\s\n]/.test(c.char))
       .map(c => c.id);
-    // If only whitespace was removed, segmentIds could be empty.
-    // This condition will then apply broadly or be ignored if empty means no condition.
-    // For now, we allow empty segmentIds.
     return [{ type: 'remove', segmentIds }];
   }
 
-  // Insertion logic
   const beforePara = text.lastIndexOf("\n", offset - 1);
   const afterPara = text.indexOf("\n", offset);
   const paraStart = beforePara + 1;
@@ -110,16 +101,15 @@ function getAutoConditions(arr, offset, removedLen) {
   const sentenceRegex = /[^.?!;:]+[.?!;:]/g;
   let match;
   
-  // Try to find sentence context
   const paragraphText = text.slice(paraStart, paraEnd);
   while ((match = sentenceRegex.exec(paragraphText)) !== null) {
-    const sentenceText = match[0];
+    const sentenceText = match[0]; // Keep variable, though not directly used later
     const localStart = match.index;
-    const localEnd = localStart + sentenceText.length;
+    const localEnd = localStart + sentenceText.length; // Keep variable
     const globalSentenceStart = paraStart + localStart;
     const globalSentenceEnd = paraStart + localEnd;
 
-    if (offset >= globalSentenceStart && offset <= globalSentenceEnd) { // MODIFIED: allow offset at end of sentence
+    if (offset >= globalSentenceStart && offset <= globalSentenceEnd) {
       const contextCharObjects = arr.slice(globalSentenceStart, globalSentenceEnd);
       const segmentIds = contextCharObjects
         .filter(c => !/[\s\n]/.test(c.char))
@@ -136,7 +126,6 @@ function getAutoConditions(arr, offset, removedLen) {
     }
   }
 
-  // Fallback to paragraph context
   const contextCharObjects = arr.slice(paraStart, paraEnd);
   const segmentIds = contextCharObjects
     .filter(c => !/[\s\n]/.test(c.char))
@@ -177,45 +166,60 @@ export default function EditPermutationUI() {
     };
     window.addEventListener("keydown", handleKey);
     return () => window.removeEventListener("keydown", handleKey);
-  }, [history, redoStack, drafts]); // Added drafts dependency for consistency
+  }, [history, redoStack, drafts, selectedDraft]); // Added selectedDraft to deps for undo/redo newSelectedDraft logic
 
-  function saveHistory(newDrafts, newEdges) {
-    setHistory(h => [...h, { drafts, graphEdges }]); // Save current graphEdges too
+  function saveHistory(newDraftsToSave, newEdgesToSave) {
+    setHistory(h => [...h, { drafts, graphEdges, selectedDraftBefore: selectedDraft }]); 
     setRedoStack([]);
-    setDrafts(newDrafts);
-    setGraphEdges(e => { // More robust edge update
-        const currentEdges = new Set(e.map(edge => `${charArrayToString(edge.from)}-${charArrayToString(edge.to)}`));
-        const uniqueNewEdges = newEdges.filter(ne => !currentEdges.has(`${charArrayToString(ne.from)}-${charArrayToString(ne.to)}`));
-        return [...e, ...uniqueNewEdges];
+    setDrafts(newDraftsToSave);
+    setGraphEdges(currentGraphEdges => {
+        const existingEdgeKeys = new Set(currentGraphEdges.map(edge => `${charArrayToString(edge.from)}-${charArrayToString(edge.to)}`));
+        const uniqueNewEdges = newEdgesToSave.filter(ne => !existingEdgeKeys.has(`${charArrayToString(ne.from)}-${charArrayToString(ne.to)}`));
+        return [...currentGraphEdges, ...uniqueNewEdges];
     });
   }
 
   function undo() {
     if (!history.length) return;
     const prevState = history[history.length - 1];
-    setRedoStack(r => [{ drafts, graphEdges }, ...r]); // Save current graphEdges for redo
+    setRedoStack(r => [{ drafts, graphEdges, selectedDraftBefore: selectedDraft }, ...r]); 
     setHistory(h => h.slice(0, -1));
     setDrafts(prevState.drafts);
-    setGraphEdges(prevState.graphEdges); // Restore graphEdges
-    const newSelectedDraft = prevState.drafts.find(d => charArrayToString(d) === charArrayToString(selectedDraft)) || prevState.drafts[0] || [];
-    setSelectedDraft(newSelectedDraft);
-    setCurrentEditText(charArrayToString(newSelectedDraft));
+    setGraphEdges(prevState.graphEdges);
+    
+    let newSelectedOnUndo = prevState.selectedDraftBefore || prevState.drafts[0] || [];
+    if (prevState.drafts.length > 0 && !prevState.drafts.some(d => d === newSelectedOnUndo)) {
+        // If selectedDraftBefore is not in the restored drafts list, pick first.
+        newSelectedOnUndo = prevState.drafts[0] || [];
+    } else if (prevState.drafts.length === 0) {
+        newSelectedOnUndo = [];
+    }
+
+    setSelectedDraft(newSelectedOnUndo);
+    setCurrentEditText(charArrayToString(newSelectedOnUndo));
   }
 
   function redo() {
     if (!redoStack.length) return;
     const nextState = redoStack[0];
-    setHistory(h => [...h, { drafts, graphEdges }]); // Save current graphEdges for undo
+    setHistory(h => [...h, { drafts, graphEdges, selectedDraftBefore: selectedDraft }]);
     setRedoStack(r => r.slice(1));
     setDrafts(nextState.drafts);
-    setGraphEdges(nextState.graphEdges); // Restore graphEdges
-    const newSelectedDraft = nextState.drafts.find(d => charArrayToString(d) === charArrayToString(selectedDraft)) || nextState.drafts[0] || [];
-    setSelectedDraft(newSelectedDraft);
-    setCurrentEditText(charArrayToString(newSelectedDraft));
+    setGraphEdges(nextState.graphEdges);
+
+    let newSelectedOnRedo = nextState.selectedDraftBefore || nextState.drafts[0] || [];
+     if (nextState.drafts.length > 0 && !nextState.drafts.some(d => d === newSelectedOnRedo)) {
+        newSelectedOnRedo = nextState.drafts[0] || [];
+    } else if (nextState.drafts.length === 0) {
+        newSelectedOnRedo = [];
+    }
+    setSelectedDraft(newSelectedOnRedo);
+    setCurrentEditText(charArrayToString(newSelectedOnRedo));
   }
 
   function initializeDraft() {
     if (!defaultDraft.trim()) return;
+    globalCharCounter = 0; // Reset counter for fresh IDs
     const arr = Array.from(defaultDraft).map(ch => ({ id: generateCharId(), char: ch }));
     setDrafts([arr]);
     setSelectedDraft(arr);
@@ -227,7 +231,11 @@ export default function EditPermutationUI() {
   }
 
   function applyEdit() {
-    const oldArr = selectedDraft;
+    const oldArr = selectedDraft; // This is CharObj[]
+    if (!oldArr) { // Should not happen if initialized, but a guard
+        console.error("Selected draft is null/undefined in applyEdit");
+        return;
+    }
     const oldText = charArrayToString(oldArr);
     const newText = currentEditText;
 
@@ -245,30 +253,26 @@ export default function EditPermutationUI() {
     const removedLen = oldText.length - prefixLen - suffixLen;
     const insertedText = newText.slice(prefixLen, newText.length - suffixLen);
     const isReplacement = removedLen > 0 && insertedText.length > 0;
-    // isSentenceAddition was complex and might interact confusingly with new condition logic.
-    // Simplifying by treating all edits through the general auto-condition mechanism for now.
-    // const isSentenceAddition = removedLen === 0 && /^[^.?!;:]+[.?!;:]$/.test(insertedText.trim());
     
     const autoSpecs = getAutoConditions(oldArr, prefixLen, removedLen);
-    const newDraftsArr = []; // Create new array, don't spread drafts yet
+    
+    const newDraftsProcessing = [];
     const newEdges = [];
-    const seenKeys = new Set(); // For adding to newDraftsArr
+    const processedDraftKeys = new Set(); // Tracks ID strings of drafts added to newDraftsProcessing
 
     drafts.forEach(dArr => {
-      // Check user-defined conditions (ignoring whitespace)
       const draftCharIdsWithoutWhitespace = dArr.filter(c => !/[\s\n]/.test(c.char)).map(c => c.id);
       if (conditionParts.length && !conditionParts.every(condObj => idSeqExists(draftCharIdsWithoutWhitespace, condObj.ids))) {
-        // If this draft doesn't meet conditions, keep it as is if not already added
-        const key = charArrayToString(dArr); // Use string content for seenKeys for existing drafts
-        if(!seenKeys.has(key)) {
-            newDraftsArr.push(dArr);
-            seenKeys.add(key);
+        // Condition not met, carry over this draft if not already processed
+        const dArrKey = dArr.map(c => c.id).join(',');
+        if (!processedDraftKeys.has(dArrKey)) {
+            newDraftsProcessing.push(dArr);
+            processedDraftKeys.add(dArrKey);
         }
         return;
       }
 
-      // If conditions met (or no conditions), try to apply the edit based on autoSpecs
-      let updated = [...dArr]; // Start with a copy of the current draft being processed
+      let updated = [...dArr]; 
       let editApplied = false;
 
       if (autoSpecs.length > 0) {
@@ -276,12 +280,17 @@ export default function EditPermutationUI() {
             const span = findOriginalSpanOfNonWhitespaceIds(dArr, spec.segmentIds);
             if (span) {
               if (spec.type === 'remove') {
-                updated = [...dArr.slice(0, span.start), ...dArr.slice(span.end)];
+                if (isReplacement) { // If it's a replacement, insert the new text
+                    const insArr = Array.from(insertedText).map(ch => ({ id: generateCharId(), char: ch }));
+                    updated = [...dArr.slice(0, span.start), ...insArr, ...dArr.slice(span.end)];
+                } else { // Pure removal
+                    updated = [...dArr.slice(0, span.start), ...dArr.slice(span.end)];
+                }
                 editApplied = true;
-                break; // Assuming one auto-condition of remove type is enough
+                break; 
               } else if (spec.type === 'insert') {
                 const insArr = Array.from(insertedText).map(ch => ({ id: generateCharId(), char: ch }));
-                let insPos = span.start; // Default to start of the context span
+                let insPos = span.start; 
                 if (spec.relNonWhitespaceOffset > 0) {
                     let nonWhitespacePassed = 0;
                     let k = span.start;
@@ -294,127 +303,117 @@ export default function EditPermutationUI() {
                             nonWhitespacePassed++;
                         }
                     }
-                     // If offset points to the end of context (or beyond non-ws chars)
-                    if (k === span.end && nonWhitespacePassed < spec.relNonWhitespaceOffset || nonWhitespacePassed === spec.relNonWhitespaceOffset) {
+                    if (k === span.end && (nonWhitespacePassed < spec.relNonWhitespaceOffset || nonWhitespacePassed === spec.relNonWhitespaceOffset) ) {
+                         // If offset points to (or beyond) the end of non-whitespace chars in context span
                         insPos = span.end;
                     }
                 }
                 updated = [...dArr.slice(0, insPos), ...insArr, ...dArr.slice(insPos)];
                 editApplied = true;
-                break; // Assuming one auto-condition of insert type is enough
+                break; 
               }
             }
           }
-      } else if (insertedText.length > 0 && removedLen === 0) { // Pure insertion without specific auto-context (e.g. at very start/end or empty doc)
-          const insArr = Array.from(insertedText).map(ch => ({ id: generateCharId(), char: ch }));
-          updated = [...dArr.slice(0, prefixLen), ...insArr, ...dArr.slice(prefixLen)];
-          editApplied = true;
-      } else if (removedLen > 0 && insertedText.length === 0 && prefixLen === 0 && suffixLen === 0) { // Pure deletion of whole content
-          updated = [];
-          editApplied = true;
+      } 
+      
+      if (!editApplied) { // Fallbacks if autoSpecs didn't apply
+        if (insertedText.length > 0 && removedLen === 0) { // Pure insertion
+            const insArr = Array.from(insertedText).map(ch => ({ id: generateCharId(), char: ch }));
+            updated = [...dArr.slice(0, prefixLen), ...insArr, ...dArr.slice(prefixLen + removedLen)]; // use prefixLen here for pure insertion start
+            editApplied = true;
+        } else if (removedLen > 0 && insertedText.length === 0 && prefixLen === 0 && suffixLen === 0) { // Delete all
+            updated = [];
+            editApplied = true;
+        } else if (isReplacement) { // General replacement fallback if autoSpecs failed for this dArr
+            const insArr = Array.from(insertedText).map(ch => ({ id: generateCharId(), char: ch }));
+            updated = [...dArr.slice(0, prefixLen), ...insArr, ...dArr.slice(prefixLen + removedLen)];
+            editApplied = true;
+        } else if (removedLen > 0 && insertedText.length === 0) { // General pure deletion fallback
+            updated = [...dArr.slice(0, prefixLen), ...dArr.slice(prefixLen + removedLen)];
+            editApplied = true;
+        }
       }
 
-
       if (editApplied) {
-        const key = updated.map(c => c.id).join(",");
-        if (!seenKeys.has(key) && !isDraftContentEmpty(updated)) {
-          newDraftsArr.push(updated);
+        const updatedKey = updated.map(c => c.id).join(",");
+        if (!processedDraftKeys.has(updatedKey) && !isDraftContentEmpty(updated)) {
+          newDraftsProcessing.push(updated);
           newEdges.push({ from: dArr, to: updated });
-          seenKeys.add(key);
-        } else if (!seenKeys.has(charArrayToString(dArr))) { // If edit resulted in a duplicate or empty, keep original if not already there
-            newDraftsArr.push(dArr);
-            seenKeys.add(charArrayToString(dArr));
+          processedDraftKeys.add(updatedKey);
+        } else { // Edit resulted in empty or already existing draft, or original draft had no change applicable
+            const dArrKey = dArr.map(c => c.id).join(',');
+             if (!processedDraftKeys.has(dArrKey)) { // Add original if not processed
+                newDraftsProcessing.push(dArr);
+                processedDraftKeys.add(dArrKey);
+            }
         }
-
-      } else { // No edit applied (e.g. autoSpec not found), keep original draft
-        const key = charArrayToString(dArr);
-         if(!seenKeys.has(key)) {
-            newDraftsArr.push(dArr);
-            seenKeys.add(key);
+      } else { // No edit applied, carry over original draft
+        const dArrKey = dArr.map(c => c.id).join(',');
+        if (!processedDraftKeys.has(dArrKey)) {
+            newDraftsProcessing.push(dArr);
+            processedDraftKeys.add(dArrKey);
         }
       }
     });
     
-    // Ensure original drafts that didn't meet conditions are still present if not modified
-    drafts.forEach(d => {
-        const key = charArrayToString(d);
-        if(!seenKeys.has(key)) {
-            newDraftsArr.push(d); // this might add duplicates if not careful, use ID based key
-            // Better: use a Set of ID-strings for existing drafts too
-        }
-    });
-    // Refined way to ensure all original drafts are carried over if not transformed:
-    const finalDrafts = [...newDraftsArr];
-    const currentDraftIdStrings = new Set(newDraftsArr.map(nd => nd.map(c=>c.id).join(',')));
-    drafts.forEach(originalDraft => {
-        if (!currentDraftIdStrings.has(originalDraft.map(c=>c.id).join(','))) {
-            // Check if a transformed version of this originalDraft exists
-            let transformed = false;
-            for(const edge of newEdges) {
-                if (edge.from === originalDraft) {
-                    transformed = true;
-                    break;
-                }
-            }
-            if (!transformed) {
-                 finalDrafts.push(originalDraft); // Add if it wasn't a source of a new edge and isn't already there
-            }
-        }
-    });
-
+    const finalDrafts = [...newDraftsProcessing]; // All drafts (new, modified, carried-over)
 
     saveHistory(finalDrafts, newEdges);
 
-    const newSelected = finalDrafts.find(d => charArrayToString(d) === charArrayToString(selectedDraft)); // Try to keep selection
-    if (newEdges.length > 0 && newEdges.some(edge => edge.from === selectedDraft)) {
-        const matchedEdge = newEdges.find(edge => edge.from === selectedDraft);
-        if (matchedEdge) {
-            setSelectedDraft(matchedEdge.to);
-            setCurrentEditText(charArrayToString(matchedEdge.to));
-        } else if (newSelected) {
-             setSelectedDraft(newSelected);
-             setCurrentEditText(charArrayToString(newSelected));
-        } else if (finalDrafts.length > 0) {
-            setSelectedDraft(finalDrafts[0]);
-            setCurrentEditText(charArrayToString(finalDrafts[0]));
+    let newSelectedToSet = null;
+    const oldSelectedDraftIdString = selectedDraft && selectedDraft.length > 0 ? selectedDraft.map(c => c.id).join(',') : null;
+
+    if (newEdges.length > 0 && oldSelectedDraftIdString) {
+        const matchedEdge = newEdges.find(edge => {
+            const edgeFromIdString = edge.from ? edge.from.map(c=>c.id).join(',') : null;
+            return edgeFromIdString === oldSelectedDraftIdString;
+        });
+        if (matchedEdge && matchedEdge.to) {
+            newSelectedToSet = matchedEdge.to;
         }
-    } else if (newSelected) {
-        setSelectedDraft(newSelected);
-        setCurrentEditText(charArrayToString(newSelected));
-    } else if (finalDrafts.length > 0) { // Fallback if selected draft was removed or changed beyond recognition
-        setSelectedDraft(finalDrafts[0]);
-        setCurrentEditText(charArrayToString(finalDrafts[0]));
-    } else { // No drafts left
-        setSelectedDraft([]);
-        setCurrentEditText("");
+    }
+
+    if (!newSelectedToSet && oldSelectedDraftIdString) {
+        newSelectedToSet = finalDrafts.find(d => d.map(c => c.id).join(',') === oldSelectedDraftIdString) || null;
     }
     
+    if (!newSelectedToSet && finalDrafts.length > 0) {
+        newSelectedToSet = finalDrafts[0];
+    } else if (finalDrafts.length === 0) {
+        newSelectedToSet = [];
+    } else if (!newSelectedToSet && finalDrafts.length > 0) { // If still null but drafts exist
+        newSelectedToSet = finalDrafts[0];
+    } else if (!newSelectedToSet) { // Absolute fallback
+        newSelectedToSet = [];
+    }
+
+
+    setSelectedDraft(newSelectedToSet);
+    setCurrentEditText(charArrayToString(newSelectedToSet)); // charArrayToString handles []
     setConditionParts([]);
   }
 
 
   function handleSelect() {
     const area = draftBoxRef.current;
-    if (!area) return;
+    if (!area || !selectedDraft) return; // Added selectedDraft check
     const start = area.selectionStart;
     const end = area.selectionEnd;
     if (start == null || end == null || start === end) return;
 
-    const multi = window.event.ctrlKey || window.event.metaKey;
-    const editedText = currentEditText; // Text in the textarea
-    const oldArr = selectedDraft; // CharObj array of the selected draft
-    const oldText = charArrayToString(oldArr); // String version of selected draft
+    const multi = window.event?.ctrlKey || window.event?.metaKey; // Optional chaining for window.event
+    const editedText = currentEditText; 
+    const oldArr = selectedDraft; 
+    const oldText = charArrayToString(oldArr);
 
     const selectedSubstringWithSpaces = editedText.slice(start, end);
+    if (selectedSubstringWithSpaces.length === 0) return;
     
     let relevantCharObjects = [];
 
     if (editedText === oldText) {
-      // Selection is directly from the pristine selectedDraft's text
       relevantCharObjects = oldArr.slice(start, end);
     } else {
-      // Textarea has been modified. Try to find the selected substring in the original selectedDraft.
-      // This is a heuristic. If the substring is not unique or has changed too much, it might not be accurate.
       const indices = [];
       let idx = oldText.indexOf(selectedSubstringWithSpaces);
       while (idx !== -1) {
@@ -424,7 +423,7 @@ export default function EditPermutationUI() {
 
       if (indices.length > 0) {
         let bestIdx = indices[0];
-        if (indices.length > 1) { // Find the occurrence closest to the selection start
+        if (indices.length > 1) { 
           let bestDiff = Math.abs(start - bestIdx);
           for (let i = 1; i < indices.length; i++) {
             const diff = Math.abs(start - indices[i]);
@@ -436,21 +435,18 @@ export default function EditPermutationUI() {
         }
         relevantCharObjects = oldArr.slice(bestIdx, bestIdx + selectedSubstringWithSpaces.length);
       } else {
-        // Could not find the exact substring; do not create a condition.
         return;
       }
     }
 
     const filteredChars = relevantCharObjects.filter(c => !/[\s\n]/.test(c.char));
+    if (filteredChars.length === 0) return; // Don't add condition if selection was only whitespace after filtering
+
     const segmentIds = filteredChars.map(c => c.id);
     const conditionText = filteredChars.map(c => c.char).join("");
 
-    if (!segmentIds.length) return; // Don't add condition if selection was only whitespace
-
     const newConditionPart = { ids: segmentIds, text: conditionText };
     setConditionParts(prev => multi ? [...prev, newConditionPart] : [newConditionPart]); 
-    
-    // area.setSelectionRange(end, end); // Optional: clear selection after condition set
   }
 
   const getConditionDisplayText = () => {
@@ -465,8 +461,9 @@ export default function EditPermutationUI() {
       <h1 className="text-2xl font-bold">Edit Permutation UI</h1>
 
       <div className="space-y-2">
-        <label>Initial Draft:</label>
+        <label htmlFor="initialDraftArea">Initial Draft:</label>
         <textarea
+          id="initialDraftArea"
           value={defaultDraft}
           onChange={e => setDefaultDraft(e.target.value)}
           className="w-full p-2 border rounded"
@@ -477,16 +474,18 @@ export default function EditPermutationUI() {
         </button>
       </div>
 
-      {stringDrafts.length > 0 && (
+      {drafts && drafts.length > 0 && ( // Added drafts null check for safety
         <>
           <div>
             <h2 className="text-xl font-semibold">All Drafts:</h2>
             <ul className="flex flex-wrap gap-2">
               {drafts.map((draftCharArr, i) => {
-                const text = charArrayToString(draftCharArr); // Use charArrayToString for key stability if IDs change
+                const text = charArrayToString(draftCharArr); 
+                // Use a more stable key if drafts can be reordered or have non-unique text
+                const key = draftCharArr.map(c=>c.id).join('-') || `draft-${i}-${text}`;
                 return (
                   <li
-                    key={i} // Ideally, use a stable ID for draft if available
+                    key={key} 
                     onClick={() => { setSelectedDraft(draftCharArr); setCurrentEditText(text); setConditionParts([]); }} 
                     className={`px-2 py-1 rounded cursor-pointer ${draftCharArr === selectedDraft ? 'bg-blue-200' : 'bg-gray-100'}`}
                   >
@@ -501,10 +500,11 @@ export default function EditPermutationUI() {
             <h2 className="text-xl font-semibold">Selected Draft:</h2>
             <textarea
               ref={draftBoxRef}
-              onMouseUp={handleSelect} // Use onMouseUp for selection
+              onMouseUp={handleSelect} 
               value={currentEditText}
               onChange={e => setCurrentEditText(e.target.value)}
               className="w-full p-2 border rounded whitespace-pre-wrap min-h-[80px]"
+              aria-label="Selected draft text area"
             />
             <div className="mt-2">Conditions: {getConditionDisplayText()}</div>
             <div className="flex space-x-2 mt-4">
@@ -514,13 +514,15 @@ export default function EditPermutationUI() {
             </div>
           </div>
 
-          <div>
-            <h2 className="text-xl font-semibold">Version Graph:</h2>
-            <VersionGraph drafts={stringDrafts} edges={stringEdges} onNodeClick={text => {
-              const idx = stringDrafts.indexOf(text);
-              if (idx >= 0) { setSelectedDraft(drafts[idx]); setCurrentEditText(text); setConditionParts([]); }
-            }} />  
-          </div>
+          {stringDrafts && stringEdges && ( // Ensure these are ready for VersionGraph
+            <div>
+              <h2 className="text-xl font-semibold">Version Graph:</h2>
+              <VersionGraph drafts={stringDrafts} edges={stringEdges} onNodeClick={text => {
+                const idx = stringDrafts.indexOf(text);
+                if (idx >= 0 && drafts[idx]) { setSelectedDraft(drafts[idx]); setCurrentEditText(text); setConditionParts([]); }
+              }} />  
+            </div>
+          )}
         </>
       )}
     </div>
