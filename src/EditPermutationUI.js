@@ -79,7 +79,7 @@ export default function EditPermutationUI() {
   const [drafts, setDrafts] = useState([]);
 const [selectedDraft, setSelectedDraft] = useState([]);
   const [currentEditText, setCurrentEditText] = useState("");
-  const [conditionParts, setConditionParts] = useState([]); // MODIFICATION: Elements will be {ids: string[], text: string}
+  const [conditionParts, setConditionParts] = useState([]); 
 const [history, setHistory] = useState([]);
   const [redoStack, setRedoStack] = useState([]);
   const [graphEdges, setGraphEdges] = useState([]);
@@ -134,7 +134,7 @@ const arr = Array.from(defaultDraft).map(ch => ({ id: generateCharId(), char: ch
     setGraphEdges([{ from: null, to: arr }]);
 setHistory([]);
     setRedoStack([]);
-    setConditionParts([]); //
+    setConditionParts([]); 
   }
 
   function applyEdit() {
@@ -161,8 +161,7 @@ if (isSentenceAddition) {
 const seenKeys = new Set(newDrafts.map(d => d.map(c => c.id).join(",")));
       drafts.forEach(dArr => {
         const idArr = dArr.map(c => c.id);
-        // MODIFICATION: Use conditionObj.ids for checking
-        if (conditionParts.length && !conditionParts.every(condObj => idSeqExists(idArr, condObj.ids))) return; [cite: 40]
+        if (conditionParts.length && !conditionParts.every(condObj => idSeqExists(idArr, condObj.ids))) return;
         const before = dArr.slice(0, prefixLen);
         const after = dArr.slice(prefixLen);
         const insArr = Array.from(insertedText).map(ch => ({ id: generateCharId(), char: ch }));
@@ -183,7 +182,7 @@ if (matched) {
         setSelectedDraft(matched.to);
         setCurrentEditText(charArrayToString(matched.to));
       }
-      setConditionParts([]); //
+      setConditionParts([]); 
       return;
 }
 
@@ -194,8 +193,7 @@ const newDraftsArr = [...drafts];
 for (let dArr of drafts) {
       let updated = [...dArr];
 const idArr = dArr.map(c => c.id);
-      // MODIFICATION: Use conditionObj.ids for checking
-      if (conditionParts.length && !conditionParts.every(condObj => idSeqExists(idArr, condObj.ids))) continue; [cite: 47]
+      if (conditionParts.length && !conditionParts.every(condObj => idSeqExists(idArr, condObj.ids))) continue;
 if (isReplacement) {
         const { segmentIds } = autoSpecs[0];
 const pos = findSegmentIndex(idArr, segmentIds);
@@ -235,7 +233,7 @@ if (newEdges.length === 1) {
 } else {
       setCurrentEditText(charArrayToString(selectedDraft));
     }
-    setConditionParts([]); //
+    setConditionParts([]); 
 }
 
   function handleSelect() {
@@ -248,7 +246,7 @@ if (start == null || end == null || start === end) return;
 const editedText = currentEditText;
     const oldArr = selectedDraft;
     const oldText = charArrayToString(oldArr);
-    const segText = editedText.slice(start, end); // This is the text to display
+    const segText = editedText.slice(start, end); 
 let segmentIds = [];
     if (editedText === oldText) {
       segmentIds = oldArr.slice(start, end).map(c => c.id);
@@ -273,11 +271,18 @@ if (diff < bestDiff) {
 }
     if (!segmentIds.length) return;
 
-    // MODIFICATION: Store object with ids and text
     const newConditionPart = { ids: segmentIds, text: segText };
-    setConditionParts(prev => multi ? [...prev, newConditionPart] : [newConditionPart]); //
+    setConditionParts(prev => multi ? [...prev, newConditionPart] : [newConditionPart]); 
 area.setSelectionRange(end, end);
 }
+
+  // MODIFICATION: Helper function to get display text for conditions
+  const getConditionDisplayText = () => {
+    if (!conditionParts.length) {
+      return '(none)';
+    }
+    return conditionParts.map(part => `'${part.text}'`).join(' + ');
+  };
 
   return (
     <div className="p-4 space-y-6 text-gray-800">
@@ -305,8 +310,8 @@ placeholder="Type starting text…"
                 <li
                   key={i}
                   onClick={() => { setSelectedDraft(drafts[i]);
-setCurrentEditText(text); setConditionParts([]); }} //
-                  className={`px-2 py-1 rounded cursor-pointer ${drafts[i] === selectedDraft ?
+setCurrentEditText(text); setConditionParts([]); }} 
+                  className={`px-2 py-1 rounded cursor-pointer ${drafts[i] === selectedDraft ? 
 'bg-blue-200' : 'bg-gray-100'}`}
                 >
                   {text}
@@ -324,10 +329,8 @@ setCurrentEditText(text); setConditionParts([]); }} //
               onChange={e => setCurrentEditText(e.target.value)}
 className="w-full p-2 border rounded whitespace-pre-wrap min-h-[80px]"
             />
-            {/* MODIFICATION: Display actual selected text for conditions */}
-            <div className="mt-2">Conditions: {conditionParts.length ? 
-                                      conditionParts.map(part => `'${part.text}'`).join(' + ') : 
-                                      '(none)'}</div> [cite: 80, 81]
+            {/* MODIFICATION: Use helper function for display */}
+            <div className="mt-2">Conditions: {getConditionDisplayText()}</div>
             <div className="flex space-x-2 mt-4">
               <button onClick={applyEdit} className="bg-blue-600 text-white px-4 py-2 rounded">Submit Edit</button>
               <button onClick={undo} className="bg-gray-200 px-4 py-2 rounded">Undo</button>
