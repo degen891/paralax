@@ -224,9 +224,8 @@ if (isSentenceAddition) {
 
           if (containingSentenceEnd !== -1) {
             insertionPointInDArr = containingSentenceEnd + 1;
-            // MODIFICATION: If the character at the determined insertion point is a newline,
-            // advance the insertion point past this newline to preserve it in the 'before' part.
-            if (insertionPointInDArr < targetDraftText.length && targetDraftText.charAt(insertionPointInDArr) === '\n') {
+            // MODIFICATION: Loop to advance insertionPointInDArr past ALL subsequent newlines
+            while (insertionPointInDArr < targetDraftText.length && targetDraftText.charAt(insertionPointInDArr) === '\n') {
                 insertionPointInDArr++;
             }
             // END MODIFICATION
@@ -236,16 +235,13 @@ if (isSentenceAddition) {
           }
         }
         
-        // Use baseInsertedText directly, as it represents the exact diff.
-        // The isSentenceAddition check uses baseInsertedText.trim() only for classification.
         let textToInsert = baseInsertedText; 
         
-        // Apply leading space logic
         if (insertionPointInDArr > 0 && 
             insertionPointInDArr <= targetDraftText.length && 
             !/[\s\n]/.test(targetDraftText.charAt(insertionPointInDArr - 1)) && 
             textToInsert.length > 0 && 
-            textToInsert.charAt(0) !== ' ' && textToInsert.charAt(0) !== '\n' ) { // Also check not starting with \n
+            textToInsert.charAt(0) !== ' ' && textToInsert.charAt(0) !== '\n' ) { 
           textToInsert = ' ' + textToInsert;
         }
 
@@ -274,7 +270,6 @@ if (matched) {
       return; //
     }
 
-    // Fallback to original logic for other types of edits
     const autoSpecs = getAutoConditions(oldArr, prefixLen, removedLen); //
 const newDraftsArr = [...drafts]; //
     const newEdges = []; //
