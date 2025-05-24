@@ -167,10 +167,10 @@ if (isSentenceAddition) {
 
         if (conditionParts.length && !conditionParts.every(condObj => idSeqExists(targetIdArr, condObj.ids))) return; //
 
-        let anchorIdIndexInDArr = -1; // This is the index in dArr of the matched preceding context ID
+        let anchorIdIndexInDArr = -1; 
 
         if (uniquePrecedingContextIds.length === 0) {
-          anchorIdIndexInDArr = -2; // Special marker for insertion at the beginning
+          anchorIdIndexInDArr = -2; 
         } else {
           const precedingIdsSet = new Set(uniquePrecedingContextIds);
           for (let i = targetIdArr.length - 1; i >= 0; i--) { 
@@ -182,19 +182,32 @@ if (isSentenceAddition) {
         }
 
         if (anchorIdIndexInDArr === -1 && uniquePrecedingContextIds.length > 0) {
-          anchorIdIndexInDArr = -2; // No context match, insert at start as per user request
+          anchorIdIndexInDArr = -2; 
         }
 
         let insertionPointInDArr;
 
-        if (anchorIdIndexInDArr === -2) { // Insert at the beginning of dArr
+        if (anchorIdIndexInDArr === -2) { 
           insertionPointInDArr = 0;
-        } else { // anchorIdIndexInDArr >= 0, a valid index in dArr
-          // MODIFICATION: Determine effective anchor for sentence lookup
+        } else { 
+          // MODIFICATION: Refined logic for effectiveAnchorForSentenceLookup
           let effectiveAnchorForSentenceLookup = anchorIdIndexInDArr;
-          if (anchorIdIndexInDArr > 0 && /\s|\n/.test(targetDraftText.charAt(anchorIdIndexInDArr))) {
-            if (/[.?!;:]/.test(targetDraftText.charAt(anchorIdIndexInDArr - 1))) {
-              effectiveAnchorForSentenceLookup = anchorIdIndexInDArr - 1;
+          if (anchorIdIndexInDArr >=0 && anchorIdIndexInDArr < targetDraftText.length) { // Ensure anchorIdIndexInDArr is a valid index
+            for (let k = anchorIdIndexInDArr; k >= 0; k--) {
+              const char = targetDraftText.charAt(k);
+              if (/[.?!;:]/.test(char)) { // Found a punctuation mark
+                effectiveAnchorForSentenceLookup = k;
+                break;
+              }
+              // If it's not punctuation and not whitespace, this character is part of sentence content
+              if (!/\s|\n/.test(char)) { 
+                effectiveAnchorForSentenceLookup = k; 
+                break;
+              }
+              // If it's whitespace, continue left. If k=0 and it was whitespace, effectiveAnchor will be 0.
+              if (k === 0) {
+                effectiveAnchorForSentenceLookup = 0; 
+              }
             }
           }
           // END MODIFICATION
@@ -202,13 +215,11 @@ if (isSentenceAddition) {
           let containingSentenceEnd = -1;
           const sentenceBoundaryRegex = /[^.?!;:]*[.?!;:\n]|[^.?!;:]+$/g; 
           let match;
-          // Reset regex for fresh exec on current targetDraftText
           sentenceBoundaryRegex.lastIndex = 0; 
           while ((match = sentenceBoundaryRegex.exec(targetDraftText)) !== null) {
             const sentenceStartIndex = match.index;
             const sentenceEndBoundary = match.index + match[0].length -1; 
             
-            // Use effectiveAnchorForSentenceLookup to find the sentence
             if (effectiveAnchorForSentenceLookup >= sentenceStartIndex && effectiveAnchorForSentenceLookup <= sentenceEndBoundary) {
               containingSentenceEnd = sentenceEndBoundary;
               break;
@@ -218,11 +229,8 @@ if (isSentenceAddition) {
           if (containingSentenceEnd !== -1) {
             insertionPointInDArr = containingSentenceEnd + 1; 
           } else {
-            // Fallback if sentence not found (e.g., dArr is empty or effectiveAnchor is outside structured text)
-            // This could happen if effectiveAnchorForSentenceLookup points to a space not clearly part of any sentence by the regex (e.g. multiple spaces)
-            // Insert after the original anchorIdIndexInDArr or at the end as a safer fallback.
-            insertionPointInDArr = anchorIdIndexInDArr + 1 > targetDraftText.length ? targetDraftText.length : anchorIdIndexInDArr +1;
-            if (insertionPointInDArr < 0) insertionPointInDArr = targetDraftText.length; // If anchor was -1 initially (should be -2 now)
+            insertionPointInDArr = (anchorIdIndexInDArr >= 0 && anchorIdIndexInDArr < targetDraftText.length) ? anchorIdIndexInDArr + 1 : targetDraftText.length;
+            if (insertionPointInDArr > targetDraftText.length) insertionPointInDArr = targetDraftText.length;
           }
         }
         
