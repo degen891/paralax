@@ -224,26 +224,19 @@ if (isSentenceAddition) {
 
           if (containingSentenceEnd !== -1) {
             insertionPointInDArr = containingSentenceEnd + 1;
-            // MODIFICATION: Loop to advance insertionPointInDArr past ALL subsequent newlines
             while (insertionPointInDArr < targetDraftText.length && targetDraftText.charAt(insertionPointInDArr) === '\n') {
                 insertionPointInDArr++;
             }
-            // END MODIFICATION
           } else {
             insertionPointInDArr = (anchorIdIndexInDArr >= 0 && anchorIdIndexInDArr < targetDraftText.length) ? anchorIdIndexInDArr + 1 : targetDraftText.length;
             if (insertionPointInDArr > targetDraftText.length) insertionPointInDArr = targetDraftText.length;
           }
         }
         
-        let textToInsert = baseInsertedText; 
-        
-        if (insertionPointInDArr > 0 && 
-            insertionPointInDArr <= targetDraftText.length && 
-            !/[\s\n]/.test(targetDraftText.charAt(insertionPointInDArr - 1)) && 
-            textToInsert.length > 0 && 
-            textToInsert.charAt(0) !== ' ' && textToInsert.charAt(0) !== '\n' ) { 
-          textToInsert = ' ' + textToInsert;
-        }
+        // MODIFICATION: Removed the conditional leading space logic.
+        // textToInsert will be exactly what the diff algorithm determined as baseInsertedText.
+        const textToInsert = baseInsertedText; 
+        // END MODIFICATION
 
         const insArr = Array.from(textToInsert).map(ch => ({ id: generateCharId(), char: ch })); //
         
@@ -427,7 +420,7 @@ className="w-full p-2 border rounded whitespace-pre-wrap min-h-[80px]"
 
 <div>
             <h2 className="text-xl font-semibold">Version Graph:</h2>
-            <VersionGraph drafts={stringDrafts} edges={stringEdges} onNodeClick={text => { //
+            <VersionGraph drafts={stringDrafs} edges={stringEdges} onNodeClick={text => { //
               const idx = stringDrafts.indexOf(text); //
 if (idx >= 0) { setSelectedDraft(drafts[idx]); setCurrentEditText(text); } //
             }} />  
