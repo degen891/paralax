@@ -163,7 +163,6 @@ export default function EditPermutationUI() {
       const newEdges = [];
       const seenKeys = new Set(newDrafts.map(d => d.map(c => c.id).join(",")));
       drafts.forEach(dArr => {
-        // Enforce user-selected conditions for pure sentence additions
         const idArr = dArr.map(c => c.id);
         if (conditionParts.length && !conditionParts.every(cond => idSeqExists(idArr, cond))) return;
         const before = dArr.slice(0, prefixLen);
@@ -238,7 +237,7 @@ export default function EditPermutationUI() {
     setConditionParts([]);
   }
 
-  // Capture user selection as ID condition (updated to handle shifted text correctly)
+  // Capture user selection as ID condition (handling duplicates and un-applied edits)
   function handleSelect() {
     const area = draftBoxRef.current;
     if (!area) return;
@@ -246,15 +245,35 @@ export default function EditPermutationUI() {
     const end = area.selectionEnd;
     if (start == null || end == null || start === end) return;
     const multi = window.event.ctrlKey || window.event.metaKey;
-    // Extract selected substring from the edited text
-    const segText = currentEditText.slice(start, end);
-    // Match this text within the current selected draft's string
+    const editedText = currentEditText;
     const oldArr = selectedDraft;
     const oldText = charArrayToString(oldArr);
-    const segIndex = oldText.indexOf(segText);
-    if (segIndex < 0) return;
-    // Slice out corresponding IDs
-    const segmentIds = oldArr.slice(segIndex, segIndex + segText.length).map(c => c.id);
+    const segText = editedText.slice(start, end);
+    let segmentIds = [];
+    if (editedText === oldText) {
+      // No un-applied edits: direct mapping by index
+      segmentIds = oldArr.slice(start, end).map(c => c.id);
+    } else {
+      // Fallback: find all occurrences of segText in oldText and pick closest to selection start
+      const indices = [];
+      let idx = oldText.indexOf(segText);
+      while (idx !== -1) {
+        indices.push(idx);
+        idx = oldText.indexOf(segText, idx + 1);
+      }
+      if (indices.length === 0) return;
+      let bestIdx = indices[0];
+      let bestDiff = Math.abs(start - bestIdx);
+      for (let i = 1; i < indices.length; i++) {
+        const diff = Math.abs(start - indices[i]);
+        if (diff < bestDiff) {
+          bestDiff = diff;
+          bestIdx = indices[i];
+        }
+      }
+      segmentIds = oldArr.slice(bestIdx, bestIdx + segText.length).map(c => c.id);
+    }
+    if (!segmentIds.length) return;
     setConditionParts(prev => multi ? [...prev, segmentIds] : [segmentIds]);
     // Collapse selection to end
     area.setSelectionRange(end, end);
@@ -320,7 +339,7 @@ export default function EditPermutationUI() {
             <VersionGraph drafts={stringDrafts} edges={stringEdges} onNodeClick={text => {
               const idx = stringDrafts.indexOf(text);
               if (idx >= 0) { setSelectedDraft(drafts[idx]); setCurrentEditText(text); }
-            }} />
+            }} />  
           </div>
         </>
       )}
