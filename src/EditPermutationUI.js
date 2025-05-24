@@ -233,10 +233,7 @@ if (isSentenceAddition) {
           }
         }
         
-        // MODIFICATION: Removed the conditional leading space logic.
-        // textToInsert will be exactly what the diff algorithm determined as baseInsertedText.
         const textToInsert = baseInsertedText; 
-        // END MODIFICATION
 
         const insArr = Array.from(textToInsert).map(ch => ({ id: generateCharId(), char: ch })); //
         
@@ -420,7 +417,8 @@ className="w-full p-2 border rounded whitespace-pre-wrap min-h-[80px]"
 
 <div>
             <h2 className="text-xl font-semibold">Version Graph:</h2>
-            <VersionGraph drafts={stringDrafs} edges={stringEdges} onNodeClick={text => { //
+            {/* Corrected typo: stringDrafs to stringDrafts */}
+            <VersionGraph drafts={stringDrafts} edges={stringEdges} onNodeClick={text => { //
               const idx = stringDrafts.indexOf(text); //
 if (idx >= 0) { setSelectedDraft(drafts[idx]); setCurrentEditText(text); } //
             }} />  
