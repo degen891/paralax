@@ -163,9 +163,8 @@ export default function EditPermutationUI() {
       const newEdges = [];
       const seenKeys = new Set(newDrafts.map(d => d.map(c => c.id).join(",")));
       drafts.forEach(dArr => {
-        // Enforce user-selected conditions for pure sentence additions
-        const idArr = dArr.map(c => c.id);
-        if (conditionParts.length && !conditionParts.every(cond => idSeqExists(idArr, cond))) return;
+        // If user-selected conditions exist, only apply to the current selected draft
+        if (conditionParts.length && dArr !== selectedDraft) return;
         const before = dArr.slice(0, prefixLen);
         const after = dArr.slice(prefixLen);
         const insArr = Array.from(insertedText).map(ch => ({ id: generateCharId(), char: ch }));
@@ -247,8 +246,25 @@ export default function EditPermutationUI() {
     if (start == null || end == null || start === end) return;
     const multi = window.event.ctrlKey || window.event.metaKey;
     const segmentIds = selectedDraft.slice(start, end).map(c => c.id);
-    setConditionParts(prev => multi ? [...prev, segmentIds] : [segmentIds]);
-    // collapse selection to end
+    setConditionParts(prev => (multi ? [...prev, segmentIds] : [segmentIds]));
+    area.setSelectionRange(end, end);
+  }
+    const txt = sel.toString();
+    const multi = window.event.ctrlKey || window.event.metaKey;
+    // Determine the draft array matching the textarea content
+    const idx = stringDrafts.indexOf(currentEditText);
+    const baseArr = idx >= 0 ? drafts[idx] : selectedDraft;
+    // Sync selectedDraft if necessary
+    if (idx >= 0) setSelectedDraft(baseArr);
+    // Capture selection range in textarea
+    const area = draftBoxRef.current;
+    if (!area) return;
+    const start = area.selectionStart;
+    const end = area.selectionEnd;
+    if (start == null || end == null || start === end) return;
+    const segmentIds = baseArr.slice(start, end).map(c => c.id);
+    setConditionParts(prev => (multi ? [...prev, segmentIds] : [segmentIds]));
+    // Collapse selection
     area.setSelectionRange(end, end);
   }
 
