@@ -55,7 +55,7 @@ const paraStart = beforePara + 1;
   const paraEnd = afterPara === -1 ?
 text.length : afterPara;
 const paragraph = text.slice(paraStart, paraEnd);
-  const sentenceRegex = /[^.?!;:]+[.?!;:]/g; //
+  const sentenceRegex = /[^.?!;:]+[.?!;:]/g; // This regex is for getAutoConditions, not the one in applyEdit's isSentenceAddition block
 let match;
 while ((match = sentenceRegex.exec(paragraph)) !== null) {
     const sentenceText = match[0];
@@ -161,10 +161,8 @@ if (isSentenceAddition) {
       const newEdges = []; 
       const seenKeys = new Set(newDrafts.map(d => d.map(c => c.id).join(","))); 
       
-      // MODIFICATION: Create master insArr for shared IDs if baseInsertedText is applied multiple times
       const textToInsert = baseInsertedText; 
       const masterInsArr = Array.from(textToInsert).map(ch => ({ id: generateCharId(), char: ch }));
-      // END MODIFICATION
       
       drafts.forEach(dArr => { 
         const targetIdArr = dArr.map(c => c.id);
@@ -215,7 +213,8 @@ if (isSentenceAddition) {
           
           let anchorSegmentText = null;
           let anchorSegmentEndIndex = -1; 
-          const sentenceBoundaryRegex = /[^.?!;:]*[.?!;:\n]|[^.?!;:]+$/g; 
+          // MODIFICATION: Restored the corrected sentenceBoundaryRegex
+          const sentenceBoundaryRegex = /[^.?!;:\n]+(?:[.?!;:\n]|$)|[.?!;:\n]/g; 
           let match;
           sentenceBoundaryRegex.lastIndex = 0; 
           while ((match = sentenceBoundaryRegex.exec(targetDraftText)) !== null) {
@@ -247,9 +246,7 @@ if (isSentenceAddition) {
           }
         }
         
-        // MODIFICATION: Use masterInsArr
         const insArr = masterInsArr; 
-        // END MODIFICATION
         
         const before = dArr.slice(0, insertionPointInDArr);
         const after = dArr.slice(insertionPointInDArr);
