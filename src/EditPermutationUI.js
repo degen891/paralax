@@ -139,7 +139,7 @@ setHistory([]);
   function applyEdit() {
     const oldArr = selectedDraft; //
 const oldText = charArrayToString(oldArr); //
-const newText = currentEditText; //
+const newText = currentEditText; // (This is the state of the editor after user's changes)
 
     let prefixLen = 0;
 const maxPref = Math.min(oldText.length, newText.length); //
@@ -151,9 +151,9 @@ while (
       oldText[oldText.length - 1 - suffixLen] === newText[newText.length - 1 - suffixLen]
     ) suffixLen++; //
 const removedLen = oldText.length - prefixLen - suffixLen;
-    const insertedText = newText.slice(prefixLen, newText.length - suffixLen);
-const isReplacement = removedLen > 0 && insertedText.length > 0;
-const isSentenceAddition = removedLen === 0 && /^[^.?!;:]+[.?!;:]$/.test(insertedText.trim()); //
+    const baseInsertedText = newText.slice(prefixLen, newText.length - suffixLen); // Diff 'insertedText'
+const isReplacement = removedLen > 0 && baseInsertedText.length > 0;
+const isSentenceAddition = removedLen === 0 && /^[^.?!;:]+[.?!;:]$/.test(baseInsertedText.trim()); // Condition based on trimmed diff
 if (isSentenceAddition) {
       const uniquePrecedingContextIds = [...new Set(oldArr.slice(0, prefixLen).map(c => c.id))];
 
@@ -190,28 +190,24 @@ if (isSentenceAddition) {
         if (anchorIdIndexInDArr === -2) { 
           insertionPointInDArr = 0;
         } else { 
-          // MODIFICATION: Refined logic for effectiveAnchorForSentenceLookup
           let effectiveAnchorForSentenceLookup = anchorIdIndexInDArr;
-          if (anchorIdIndexInDArr >=0 && anchorIdIndexInDArr < targetDraftText.length) { // Ensure anchorIdIndexInDArr is a valid index
+          if (anchorIdIndexInDArr >=0 && anchorIdIndexInDArr < targetDraftText.length) {
             for (let k = anchorIdIndexInDArr; k >= 0; k--) {
               const char = targetDraftText.charAt(k);
-              if (/[.?!;:]/.test(char)) { // Found a punctuation mark
+              if (/[.?!;:]/.test(char)) { 
                 effectiveAnchorForSentenceLookup = k;
                 break;
               }
-              // If it's not punctuation and not whitespace, this character is part of sentence content
               if (!/\s|\n/.test(char)) { 
                 effectiveAnchorForSentenceLookup = k; 
                 break;
               }
-              // If it's whitespace, continue left. If k=0 and it was whitespace, effectiveAnchor will be 0.
               if (k === 0) {
                 effectiveAnchorForSentenceLookup = 0; 
               }
             }
           }
-          // END MODIFICATION
-
+          
           let containingSentenceEnd = -1;
           const sentenceBoundaryRegex = /[^.?!;:]*[.?!;:\n]|[^.?!;:]+$/g; 
           let match;
@@ -234,10 +230,21 @@ if (isSentenceAddition) {
           }
         }
         
-        let textToInsert = insertedText; 
+        // MODIFICATION: Construct textToInsert, preserving trailing newline from currentEditText if present
+        let textToInsert = baseInsertedText; // Start with the diff's inserted text
+        const charAfterInsertedInNewTextIndex = prefixLen + baseInsertedText.length;
+        if (charAfterInsertedInNewTextIndex < newText.length && // Ensure index is within bounds of newText
+            newText.charAt(charAfterInsertedInNewTextIndex) === '\n' &&
+            baseInsertedText.charAt(baseInsertedText.length - 1) !== '\n') {
+          textToInsert += '\n';
+        }
+        // END MODIFICATION
+
+        // Apply leading space logic to the potentially newline-terminated textToInsert
         if (insertionPointInDArr > 0 && 
             insertionPointInDArr <= targetDraftText.length && 
             !/[\s\n]/.test(targetDraftText.charAt(insertionPointInDArr - 1)) && 
+            textToInsert.length > 0 && // Ensure textToInsert is not empty before charAt
             textToInsert.charAt(0) !== ' ') {
           textToInsert = ' ' + textToInsert;
         }
@@ -281,7 +288,7 @@ const pos = findSegmentIndex(idArr, segmentIds); //
         if (pos < 0) continue;
         const before = dArr.slice(0, pos);
 const after = dArr.slice(pos + removedLen); //
-        const insArr = Array.from(insertedText).map(ch => ({ id: generateCharId(), char: ch })); //
+        const insArr = Array.from(baseInsertedText).map(ch => ({ id: generateCharId(), char: ch })); // Use baseInsertedText here
 updated = [...before, ...insArr, ...after];
       } else { 
         for (let spec of autoSpecs) { //
@@ -290,7 +297,7 @@ if (pos < 0) continue;
           if (spec.type === 'remove') { //
             updated = [...updated.slice(0, pos), ...updated.slice(pos + removedLen)]; //
 } else { // spec.type === 'insert'
-            const insArr = Array.from(insertedText).map(ch => ({ id: generateCharId(), char: ch })); //
+            const insArr = Array.from(baseInsertedText).map(ch => ({ id: generateCharId(), char: ch })); // Use baseInsertedText here
 const insPos = pos + spec.relOffset; //
             updated = [...updated.slice(0, insPos), ...insArr, ...updated.slice(insPos)];
 }
