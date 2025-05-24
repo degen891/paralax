@@ -245,26 +245,10 @@ export default function EditPermutationUI() {
     const end = area.selectionEnd;
     if (start == null || end == null || start === end) return;
     const multi = window.event.ctrlKey || window.event.metaKey;
+    // Always use the current selectedDraft (which is up-to-date after applyEdit)
     const segmentIds = selectedDraft.slice(start, end).map(c => c.id);
     setConditionParts(prev => (multi ? [...prev, segmentIds] : [segmentIds]));
-    area.setSelectionRange(end, end);
-  }
-    const txt = sel.toString();
-    const multi = window.event.ctrlKey || window.event.metaKey;
-    // Determine the draft array matching the textarea content
-    const idx = stringDrafts.indexOf(currentEditText);
-    const baseArr = idx >= 0 ? drafts[idx] : selectedDraft;
-    // Sync selectedDraft if necessary
-    if (idx >= 0) setSelectedDraft(baseArr);
-    // Capture selection range in textarea
-    const area = draftBoxRef.current;
-    if (!area) return;
-    const start = area.selectionStart;
-    const end = area.selectionEnd;
-    if (start == null || end == null || start === end) return;
-    const segmentIds = baseArr.slice(start, end).map(c => c.id);
-    setConditionParts(prev => (multi ? [...prev, segmentIds] : [segmentIds]));
-    // Collapse selection
+    // collapse selection to end
     area.setSelectionRange(end, end);
   }
 
