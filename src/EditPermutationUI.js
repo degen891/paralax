@@ -13,7 +13,7 @@ function charArrayToString(arr) {
 
 // Helper function to check if a draft is effectively empty
 function isDraftContentEmpty(arr) {
-  const text = charArrayToString(arr); // [cite: 4]
+  const text = charArrayToString(arr); //
 const trimmedText = text.trim();
   if (trimmedText.length === 0) {
     return true;
@@ -39,12 +39,12 @@ break; }
 
 // Check if sequence exists in ID array
 function idSeqExists(idArr, seq) {
-  return findSegmentIndex(idArr, seq) >= 0; // [cite: 10]
+  return findSegmentIndex(idArr, seq) >= 0; //
 }
 
 // Auto-conditions: specs for removal or insertion
 function getAutoConditions(arr, offset, removedLen) {
-  const text = charArrayToString(arr); // [cite: 11]
+  const text = charArrayToString(arr); //
 if (removedLen > 0) {
     const segmentIds = arr.slice(offset, offset + removedLen).map(c => c.id);
 return [{ type: 'remove', segmentIds }];
@@ -55,7 +55,7 @@ const paraStart = beforePara + 1;
   const paraEnd = afterPara === -1 ?
 text.length : afterPara;
 const paragraph = text.slice(paraStart, paraEnd);
-  const sentenceRegex = /[^.?!;:]+[.?!;:]/g; // [cite: 15]
+  const sentenceRegex = /[^.?!;:]+[.?!;:]/g; //
 let match;
 while ((match = sentenceRegex.exec(paragraph)) !== null) {
     const sentenceText = match[0];
@@ -84,10 +84,10 @@ const [history, setHistory] = useState([]);
   const [redoStack, setRedoStack] = useState([]);
   const [graphEdges, setGraphEdges] = useState([]);
 const draftBoxRef = useRef(null);
-const stringDrafts = drafts.map(arr => charArrayToString(arr)); // [cite: 24]
+const stringDrafts = drafts.map(arr => charArrayToString(arr)); //
 const stringEdges = graphEdges.map(({ from, to }) => ({
-    from: from ? charArrayToString(from) : null, // [cite: 24]
-    to: charArrayToString(to), // [cite: 24]
+    from: from ? charArrayToString(from) : null, //
+    to: charArrayToString(to), //
   }));
 useEffect(() => {
     const handleKey = e => {
@@ -96,13 +96,13 @@ useEffect(() => {
     };
     window.addEventListener("keydown", handleKey);
     return () => window.removeEventListener("keydown", handleKey);
-  }, [history, redoStack, drafts]); // [cite: 25]
+  }, [history, redoStack, drafts]); //
 function saveHistory(newDrafts, newEdges) {
     setHistory(h => [...h, drafts]);
     setRedoStack([]);
     setDrafts(newDrafts);
     setGraphEdges(e => [...e, ...newEdges]);
-} // [cite: 26]
+} //
 
   function undo() {
     if (!history.length) return;
@@ -111,7 +111,7 @@ setRedoStack(r => [drafts, ...r]);
     setHistory(h => h.slice(0, -1));
     setDrafts(prev);
     setSelectedDraft(prev[0] || []);
-    setCurrentEditText(charArrayToString(prev[0] || [])); // [cite: 28]
+    setCurrentEditText(charArrayToString(prev[0] || [])); //
 }
 
   function redo() {
@@ -121,12 +121,12 @@ setRedoStack(r => [drafts, ...r]);
 setRedoStack(r => r.slice(1));
     setDrafts(next);
     setSelectedDraft(next[0] || []);
-    setCurrentEditText(charArrayToString(next[0] || [])); // [cite: 30]
+    setCurrentEditText(charArrayToString(next[0] || [])); //
 }
 
   function initializeDraft() {
     if (!defaultDraft.trim()) return;
-const arr = Array.from(defaultDraft).map(ch => ({ id: generateCharId(), char: ch })); // [cite: 32]
+const arr = Array.from(defaultDraft).map(ch => ({ id: generateCharId(), char: ch })); //
     setDrafts([arr]);
     setSelectedDraft(arr);
     setCurrentEditText(defaultDraft);
@@ -155,7 +155,15 @@ const removedLen = oldText.length - prefixLen - suffixLen;
 const isReplacement = removedLen > 0 && baseInsertedText.length > 0;
     const isSentenceAddition = removedLen === 0 && /^[^.?!;:]+[.?!;:]$/.test(baseInsertedText.trim()); 
 if (isSentenceAddition) {
+      console.log("--- Entering isSentenceAddition block ---");
+      console.log("oldText:", `"${oldText}"`);
+      console.log("newText:", `"${newText}"`);
+      console.log("prefixLen:", prefixLen, `(text: "${oldText.slice(0, prefixLen)}")`);
+      console.log("suffixLen:", suffixLen, `(text: "${oldText.slice(oldText.length - suffixLen)}")`);
+      console.log("baseInsertedText:", `"${baseInsertedText}"`);
+
       const uniquePrecedingContextIds = [...new Set(oldArr.slice(0, prefixLen).map(c => c.id))];
+      console.log("uniquePrecedingContextIds length:", uniquePrecedingContextIds.length);
 
       const newDrafts = [...drafts]; 
       const newEdges = []; 
@@ -164,18 +172,24 @@ if (isSentenceAddition) {
       drafts.forEach(dArr => { 
         const targetIdArr = dArr.map(c => c.id);
         const targetDraftText = charArrayToString(dArr); 
+        console.log("%cProcessing dArr:", "color: blue; font-weight: bold;", `"${targetDraftText}"`);
 
-        if (conditionParts.length && !conditionParts.every(condObj => idSeqExists(targetIdArr, condObj.ids))) return; 
+        if (conditionParts.length && !conditionParts.every(condObj => idSeqExists(targetIdArr, condObj.ids))) {
+          console.log("  dArr failed conditionParts, skipping this permutation path.");
+          return; 
+        }
 
         let anchorIdIndexInDArr = -1; 
 
         if (uniquePrecedingContextIds.length === 0) {
           anchorIdIndexInDArr = -2; 
+          console.log("  No preceding context, anchorIdIndexInDArr = -2 (insert at start)");
         } else {
           const precedingIdsSet = new Set(uniquePrecedingContextIds);
           for (let i = targetIdArr.length - 1; i >= 0; i--) { 
             if (precedingIdsSet.has(targetIdArr[i])) {
               anchorIdIndexInDArr = i; 
+              console.log(`  Found last matching ID from preceding context in dArr at index: ${anchorIdIndexInDArr} (char: "${targetDraftText.charAt(anchorIdIndexInDArr)}")`);
               break;
             }
           }
@@ -183,12 +197,14 @@ if (isSentenceAddition) {
 
         if (anchorIdIndexInDArr === -1 && uniquePrecedingContextIds.length > 0) {
           anchorIdIndexInDArr = -2; 
+          console.log("  Preceding context existed, but no match in dArr. Setting anchorIdIndexInDArr = -2 (insert at start)");
         }
 
         let insertionPointInDArr;
 
         if (anchorIdIndexInDArr === -2) { 
           insertionPointInDArr = 0;
+          console.log("  Decision: Insert at beginning, raw insertionPointInDArr =", insertionPointInDArr);
         } else { 
           let effectiveAnchorForSentenceLookup = anchorIdIndexInDArr;
           if (anchorIdIndexInDArr >=0 && anchorIdIndexInDArr < targetDraftText.length) {
@@ -207,6 +223,7 @@ if (isSentenceAddition) {
               }
             }
           }
+          console.log(`  anchorIdIndexInDArr: ${anchorIdIndexInDArr}, effectiveAnchorForSentenceLookup: ${effectiveAnchorForSentenceLookup} (char: "${targetDraftText.charAt(effectiveAnchorForSentenceLookup)}")`);
           
           let anchorSegmentText = null;
           let anchorSegmentEndIndex = -1; 
@@ -220,34 +237,50 @@ if (isSentenceAddition) {
             if (effectiveAnchorForSentenceLookup >= segmentStartIndex && effectiveAnchorForSentenceLookup <= segmentEndBoundary) {
               anchorSegmentText = match[0];
               anchorSegmentEndIndex = segmentEndBoundary;
+              console.log(`  Segment containing effective anchor: "${anchorSegmentText}", ends at index: ${anchorSegmentEndIndex}`);
               break;
             }
           }
-          
+
           if (anchorSegmentText !== null) {
-            const isTrueSentence = /[.?!;:]$/.test(anchorSegmentText.trim().replace(/\n$/, ''));
+            const trimmedSegment = anchorSegmentText.trim().replace(/\n$/, '');
+            const isTrueSentence = /[.?!;:]$/.test(trimmedSegment);
+            console.log(`  Segment "${anchorSegmentText}" (trimmed for test: "${trimmedSegment}") isTrueSentence: ${isTrueSentence}`);
             if (isTrueSentence) {
               insertionPointInDArr = anchorSegmentEndIndex + 1;
+              console.log("  Anchor in true sentence. Initial insertionPointInDArr after segment:", insertionPointInDArr);
             } else { 
               insertionPointInDArr = anchorIdIndexInDArr + 1; 
+              console.log("  Anchor not in true sentence. Initial insertionPointInDArr after anchorIdIndexInDArr:", insertionPointInDArr);
             }
           } else { 
+            console.log("  No segment found for effectiveAnchor. Fallback.");
             insertionPointInDArr = (anchorIdIndexInDArr >= 0 && anchorIdIndexInDArr < targetDraftText.length) ? anchorIdIndexInDArr + 1 : targetDraftText.length;
             if (insertionPointInDArr > targetDraftText.length) insertionPointInDArr = targetDraftText.length;
+            console.log("  Fallback insertionPointInDArr:", insertionPointInDArr);
           }
           
+          let initialInsertionPointBeforeNewlineSkip = insertionPointInDArr;
           while (insertionPointInDArr < targetDraftText.length && targetDraftText.charAt(insertionPointInDArr) === '\n') {
               insertionPointInDArr++;
+          }
+          if(initialInsertionPointBeforeNewlineSkip !== insertionPointInDArr) {
+            console.log("  Advanced insertionPointInDArr past newlines from", initialInsertionPointBeforeNewlineSkip, "to", insertionPointInDArr);
           }
         }
         
         const textToInsert = baseInsertedText; 
+        console.log("  Final insertionPointInDArr:", insertionPointInDArr);
+        console.log("  textToInsert:", `"${textToInsert}"`);
 
         const insArr = Array.from(textToInsert).map(ch => ({ id: generateCharId(), char: ch }));
         
         const before = dArr.slice(0, insertionPointInDArr);
         const after = dArr.slice(insertionPointInDArr);
         const updated = [...before, ...insArr, ...after];
+        console.log("  Before text slice:", `"${charArrayToString(before)}"`);
+        console.log("  After text slice:", `"${charArrayToString(after)}"`);
+        console.log("  Resulting updated text for this dArr:", `"${charArrayToString(updated)}"`);
         
         const key = updated.map(c => c.id).join(","); 
         if (!seenKeys.has(key)) { 
@@ -255,7 +288,12 @@ if (isSentenceAddition) {
             seenKeys.add(key); 
             newDrafts.push(updated); 
             newEdges.push({ from: dArr, to: updated }); 
+            console.log("    Added updated draft.");
+          } else {
+            console.log("    Updated draft is empty, not adding.");
           }
+        } else {
+            console.log("    Updated draft key already seen, not adding.");
         }
       });
       saveHistory(newDrafts, newEdges); 
@@ -265,6 +303,7 @@ if (matched) {
         setCurrentEditText(charArrayToString(matched.to)); 
       }
       setConditionParts([]); 
+      console.log("--- Exiting isSentenceAddition block ---");
       return; 
     }
 
