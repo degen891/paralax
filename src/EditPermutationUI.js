@@ -157,14 +157,15 @@ export default function EditPermutationUI() {
     const isReplacement = removedLen > 0 && insertedText.length > 0;
 
     // 1) Detect pure sentence addition: no removal, standalone sentence
-    const newDrafts = [...drafts];
-    const newEdges = [];
-    const seenKeys = new Set(newDrafts.map(d => d.map(c => c.id).join(",")));
-    drafts.forEach(dArr => {
-                // Enforce user-selected ID conditions
+    const isSentenceAddition = removedLen === 0 && /^[^.?!;:]+[.?!;:]$/.test(insertedText.trim());
+    if (isSentenceAddition) {
+      const newDrafts = [...drafts];
+      const newEdges = [];
+      const seenKeys = new Set(newDrafts.map(d => d.map(c => c.id).join(",")));
+      drafts.forEach(dArr => {
+        // Enforce user-selected conditions for pure sentence additions
         const idArr = dArr.map(c => c.id);
         if (conditionParts.length && !conditionParts.every(cond => idSeqExists(idArr, cond))) return;
-        if (conditionParts.length && dArr !== selectedDraft) return;
         const before = dArr.slice(0, prefixLen);
         const after = dArr.slice(prefixLen);
         const insArr = Array.from(insertedText).map(ch => ({ id: generateCharId(), char: ch }));
@@ -237,7 +238,7 @@ export default function EditPermutationUI() {
     setConditionParts([]);
   }
 
-  // Capture user selection as ID condition
+  // Capture user selection as ID condition (updated to handle shifted text correctly)
   function handleSelect() {
     const area = draftBoxRef.current;
     if (!area) return;
@@ -245,10 +246,17 @@ export default function EditPermutationUI() {
     const end = area.selectionEnd;
     if (start == null || end == null || start === end) return;
     const multi = window.event.ctrlKey || window.event.metaKey;
-    // Always use the current selectedDraft (which is up-to-date after applyEdit)
-    const segmentIds = selectedDraft.slice(start, end).map(c => c.id);
-    setConditionParts(prev => (multi ? [...prev, segmentIds] : [segmentIds]));
-    // collapse selection to end
+    // Extract selected substring from the edited text
+    const segText = currentEditText.slice(start, end);
+    // Match this text within the current selected draft's string
+    const oldArr = selectedDraft;
+    const oldText = charArrayToString(oldArr);
+    const segIndex = oldText.indexOf(segText);
+    if (segIndex < 0) return;
+    // Slice out corresponding IDs
+    const segmentIds = oldArr.slice(segIndex, segIndex + segText.length).map(c => c.id);
+    setConditionParts(prev => multi ? [...prev, segmentIds] : [segmentIds]);
+    // Collapse selection to end
     area.setSelectionRange(end, end);
   }
 
