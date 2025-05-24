@@ -99,8 +99,6 @@ useEffect(() => {
     return () => window.removeEventListener("keydown", handleKey);
   }, [history, redoStack, drafts]); //
 function saveHistory(newDrafts, newEdges) {
-    console.log("Saving history with newDrafts count:", newDrafts.length, "newEdges count:", newEdges.length);
-    console.log("Final newDrafts strings:", newDrafts.map(d => charArrayToString(d)));
     setHistory(h => [...h, drafts]);
     setRedoStack([]);
     setDrafts(newDrafts);
@@ -180,22 +178,13 @@ const removedLen = oldText.length - prefixLen - suffixLen;
             }
         }
     }
-    // console.log("applyEdit determined isEditWithinExistingSentence:", isEditWithinExistingSentence);
-    // console.log("applyEdit determined removedLen:", removedLen);
-    // console.log("applyEdit determined baseInsertedText:", `"${baseInsertedText}"`);
-
 
     if (isEditWithinExistingSentence || removedLen > 0) {
-        console.log("APPLY_EDIT: Handling as IN-SENTENCE or REMOVAL/REPLACEMENT edit via autoSpecs.");
         const autoSpecs = getAutoConditions(oldArr, prefixLen, removedLen); 
         const newDraftsArr = [...drafts]; 
         const newEdges = []; 
-        const initialSeenKeysForAutoSpecs = newDraftsArr.map(d => d.map(c => c.id).join(","));
-        const seen = new Set(initialSeenKeysForAutoSpecs); 
-        // console.log("AutoSpecs - Initial newDraftsArr count:", newDraftsArr.length);
-        // console.log("AutoSpecs - Initial seen keys:", initialSeenKeysForAutoSpecs);
-
-
+        const seen = new Set(newDraftsArr.map(d => d.map(c => c.id).join(","))); 
+        
         for (let dArr of drafts) { 
           let updated = [...dArr]; 
           const idArr = dArr.map(c => c.id);
@@ -215,9 +204,9 @@ const removedLen = oldText.length - prefixLen - suffixLen;
                 const insArr = Array.from(baseInsertedText).map(ch => ({ id: generateCharId(), char: ch })); 
                 updated = [...before, ...insArr, ...after];
                 currentDArrModified = true;
-            } else if (segmentIdsToReplace.length === 0 && baseInsertedText.length > 0) { // Pure insertion, but in autoSpecs path
+            } else if (segmentIdsToReplace.length === 0 && baseInsertedText.length > 0) { 
                  let appliedInsert = false;
-                 for (let spec of autoSpecs) { // Should pick up insert spec
+                 for (let spec of autoSpecs) { 
                      if (spec.type === 'insert') {
                         const insertPosBase = findSegmentIndex(idArr, spec.segmentIds);
                         if (insertPosBase < 0) continue;
@@ -234,15 +223,21 @@ const removedLen = oldText.length - prefixLen - suffixLen;
                 continue; 
             }
           } else if (removedLen > 0 && baseInsertedText.length === 0) { // Pure Deletion
+            let appliedDelete = false;
             for (let spec of autoSpecs) { 
               if (spec.type === 'remove') {
                 const pos = findSegmentIndex(idArr, spec.segmentIds); 
                 if (pos < 0) continue;
-                updated = [...updated.slice(0, pos), ...updated.slice(pos + spec.segmentIds.length)]; 
+                // Ensure `removedLen` from overall diff is used if spec refers to the exact segment.
+                // Or, if spec.segmentIds has its own implied length:
+                const lengthToRemove = spec.segmentIds.length; // Using spec's own segment length
+                updated = [...updated.slice(0, pos), ...updated.slice(pos + lengthToRemove)]; 
                 currentDArrModified = true;
+                appliedDelete = true;
                 break; 
               }
             }
+            if(!appliedDelete) continue;
           } else if (removedLen === 0 && baseInsertedText.length > 0) { // Pure Insertion (within sentence)
              let appliedInsert = false;
              for (let spec of autoSpecs) {
@@ -251,7 +246,6 @@ const removedLen = oldText.length - prefixLen - suffixLen;
                     if (insertPosBase < 0) continue;
                     const insArr = Array.from(baseInsertedText).map(ch => ({ id: generateCharId(), char: ch })); 
                     const actualInsertPos = insertPosBase + spec.relOffset; 
-                    // Make sure to use original dArr for slicing if updated hasn't been changed meaningfully yet or is self copy
                     updated = [...dArr.slice(0, actualInsertPos), ...insArr, ...dArr.slice(actualInsertPos)];
                     appliedInsert = true;
                     currentDArrModified = true;
@@ -259,7 +253,7 @@ const removedLen = oldText.length - prefixLen - suffixLen;
                  }
              }
              if (!appliedInsert) continue;
-          } else { // No change
+          } else { 
             continue;
           }
 
@@ -267,22 +261,14 @@ const removedLen = oldText.length - prefixLen - suffixLen;
             const key = updated.map(c => c.id).join(",");
             if (!seen.has(key)) { 
               if (!isDraftContentEmpty(updated)) { 
-                // console.log(`AutoSpecs - Adding new draft from dArr="${charArrayToString(dArr)}": "${charArrayToString(updated)}" with key: ${key.substring(0,20)}...`);
                 seen.add(key); 
                 newDraftsArr.push(updated);
                 newEdges.push({ from: dArr, to: updated });
               }
             } 
-            // else {
-            //   console.log(`AutoSpecs - Key ${key.substring(0,20)}... for updated draft "${charArrayToString(updated)}" already seen.`);
-            // }
           }
         } 
         
-        // Filter newDraftsArr to ensure only unique ID sequences are present (seen set handles this)
-        // And also ensure that if an original draft was modified, only its modified version(s) are kept, not the original AND modified.
-        // The current logic newDraftsArr = [...drafts] and then pushing, relies on seen to not double-add.
-        // It will contain originals + new versions. This might be desired for branching.
         saveHistory(newDraftsArr, newEdges); 
         
         const directPermutationOfSelected = newEdges.find(edge => edge.from === oldArr);
@@ -290,43 +276,41 @@ const removedLen = oldText.length - prefixLen - suffixLen;
             setSelectedDraft(directPermutationOfSelected.to);
             setCurrentEditText(charArrayToString(directPermutationOfSelected.to));
         } else {
-            // If selected draft was not directly permuted (e.g. it was a source for other perms but not itself)
-            // or if multiple permutations arose from it. For now, revert editor to selected text.
-            setCurrentEditText(oldText); // Revert editor text
-            // setSelectedDraft(oldArr); // Keep selected draft as is
+             const oldArrKey = oldArr.map(c=>c.id).join(',');
+             const preservedSelectedDraft = newDraftsArr.find(d => d.map(c=>c.id).join(',') === oldArrKey);
+             if (preservedSelectedDraft) {
+                 setSelectedDraft(preservedSelectedDraft);
+                 setCurrentEditText(charArrayToString(preservedSelectedDraft));
+             } else if (newEdges.length > 0 && newEdges[0].to ) { // Fallback if selected draft was removed/changed key
+                 setSelectedDraft(newEdges[0].to);
+                 setCurrentEditText(charArrayToString(newEdges[0].to));
+             } else if (newDraftsArr.length > 0) {
+                 setSelectedDraft(newDraftsArr[0]);
+                 setCurrentEditText(charArrayToString(newDraftsArr[0]));
+             } else {
+                 setCurrentEditText(oldText); 
+                 setSelectedDraft(oldArr); 
+             }
         }
         setConditionParts([]); 
 
     } else { // This means: isEditWithinExistingSentence is FALSE AND removedLen is 0
-        console.log("APPLY_EDIT: Handling as PURE INSERTION AT BOUNDARY using last matching ID.");
+        // **HANDLE AS NEW ADDITION AT A BOUNDARY (using last matching ID logic)**
         const uniquePrecedingContextIds = [...new Set(oldArr.slice(0, prefixLen).map(c => c.id))];
         
-        // For this path, newDrafts should be built carefully.
-        // It should contain permutations of each existing draft based on the insertion.
-        const resultingDrafts = []; 
+        // MODIFICATION: Reverted to starting with current drafts for accumulation
+        const newDrafts = [...drafts]; 
         const newEdges = []; 
-        const seenKeys = new Set(); // Tracks ID sequences of drafts added to resultingDrafts
-
-        // console.log("BoundaryInsert - Initial drafts for forEach:", drafts.map(d=>charArrayToString(d)));
-
+        const seenKeys = new Set(newDrafts.map(d => d.map(c => c.id).join(","))); 
+        // END MODIFICATION
+        
         const masterInsArr = Array.from(baseInsertedText).map(ch => ({ id: generateCharId(), char: ch }));
         
-        drafts.forEach(dArr => { 
+        drafts.forEach(dArr => { // Iterate over original drafts to generate permutations
             const targetIdArr = dArr.map(c => c.id);
             const targetDraftText = charArrayToString(dArr); 
-            // console.log(`BoundaryInsert - Processing dArr: "${targetDraftText}"`);
 
-            if (conditionParts.length && !conditionParts.every(condObj => idSeqExists(targetIdArr, condObj.ids))) {
-                // If conditions not met, this dArr is not a candidate for this specific insertion.
-                // Add it to resultingDrafts if its key isn't there yet (to preserve it).
-                const originalKey = targetIdArr.join(',');
-                if (!seenKeys.has(originalKey) && !isDraftContentEmpty(dArr)) {
-                    // console.log(`BoundaryInsert - dArr "${targetDraftText}" failed conditions, preserving original.`);
-                    resultingDrafts.push(dArr);
-                    seenKeys.add(originalKey);
-                }
-                return; 
-            }
+            if (conditionParts.length && !conditionParts.every(condObj => idSeqExists(targetIdArr, condObj.ids))) return; 
 
             let anchorIdIndexInDArr = -1; 
             if (uniquePrecedingContextIds.length === 0) {
@@ -397,65 +381,43 @@ const removedLen = oldText.length - prefixLen - suffixLen;
             const after = dArr.slice(insertionPointInDArr);
             const updated = [...before, ...insArr, ...after];
             
-            // console.log(`BoundaryInsert - For dArr "${targetDraftText}", updated to "${charArrayToString(updated)}"`);
-            // console.log(`BoundaryInsert -   anchorIdx=${anchorIdIndexInDArr}, effectiveAnchor=${effectiveAnchorForSentenceLookup}, segment="${anchorSegmentText}", insPoint=${insertionPointInDArr}`);
-            // console.log(`BoundaryInsert -   before="${charArrayToString(before)}", inserted="${charArrayToString(insArr)}", after="${charArrayToString(after)}"`);
-
-
             const key = updated.map(c => c.id).join(","); 
             if (!seenKeys.has(key)) { 
                 if (!isDraftContentEmpty(updated)) {  
                     seenKeys.add(key); 
-                    resultingDrafts.push(updated); 
+                    newDrafts.push(updated); // Push to the array that started with [...drafts]
                     newEdges.push({ from: dArr, to: updated }); 
-                    // console.log(`BoundaryInsert - Added updated draft: "${charArrayToString(updated)}"`);
-                }
-            } else {
-                // If this new permutation already exists (e.g. original dArr was not changed by this path & already in seenKeys)
-                // Ensure original dArr is carried over if it wasn't the source of an edge already and isn't empty
-                const originalKey = targetIdArr.join(',');
-                if (!newEdges.find(edge => edge.from === dArr) && !seenKeys.has(originalKey) && !isDraftContentEmpty(dArr)) {
-                    // console.log(`BoundaryInsert - Updated draft key ${key.substring(0,20)}... already seen. Preserving original dArr "${targetDraftText}"`);
-                    resultingDrafts.push(dArr);
-                    seenKeys.add(originalKey);
                 }
             }
         });
         
-        // Ensure all original drafts that were not modified (didn't become a 'from' in an edge) are carried over
-        drafts.forEach(originalD => {
-            const originalKey = originalD.map(c=>c.id).join(',');
-            if(!newEdges.some(edge => edge.from === originalD) && !seenKeys.has(originalKey) && !isDraftContentEmpty(originalD)) {
-                // console.log(`BoundaryInsert - Carrying over unmodified original draft: "${charArrayToString(originalD)}"`);
-                resultingDrafts.push(originalD);
-                seenKeys.add(originalKey);
-            }
-        });
-
-
-        saveHistory(resultingDrafts, newEdges); 
+        saveHistory(newDrafts, newEdges); // newDrafts now contains originals + new unique permutations
         
         const directPermutationOfSelected = newEdges.find(edge => edge.from === oldArr);
         if (directPermutationOfSelected) {
             setSelectedDraft(directPermutationOfSelected.to);
             setCurrentEditText(charArrayToString(directPermutationOfSelected.to));
         } else {
-            // If the selected draft was not directly permuted, it might mean it was preserved.
-            // Try to find it in the new set of drafts by its original ID sequence.
-            const oldArrKey = oldArr.map(c=>c.id).join(',');
-            const preservedSelectedDraft = resultingDrafts.find(d => d.map(c=>c.id).join(',') === oldArrKey);
-            if (preservedSelectedDraft) {
-                setSelectedDraft(preservedSelectedDraft);
-                setCurrentEditText(charArrayToString(preservedSelectedDraft));
-            } else if (resultingDrafts.length > 0) { // Fallback if absolutely necessary
-                setSelectedDraft(resultingDrafts[0]);
-                setCurrentEditText(charArrayToString(resultingDrafts[0]));
-            } else { // No drafts left, clear editor
-                setCurrentEditText("");
-            }
+             const oldArrKey = oldArr.map(c=>c.id).join(',');
+             const preservedSelectedDraft = newDrafts.find(d => d.map(c=>c.id).join(',') === oldArrKey);
+             if (preservedSelectedDraft) {
+                 setSelectedDraft(preservedSelectedDraft);
+                 setCurrentEditText(charArrayToString(preservedSelectedDraft));
+             } else if (newEdges.length > 0 && newEdges[0].to ) { 
+                 setSelectedDraft(newEdges[0].to);
+                 setCurrentEditText(charArrayToString(newEdges[0].to));
+             } else if (newDrafts.find(d => d === oldArr)) { // If oldArr is still in newDrafts (no changes made from it)
+                setSelectedDraft(oldArr);
+                setCurrentEditText(oldText);
+             } else if (newDrafts.length > 0) {
+                 setSelectedDraft(newDrafts[0]); // Fallback, should be improved
+                 setCurrentEditText(charArrayToString(newDrafts[0]));
+             } else { 
+                 setCurrentEditText(oldText); 
+                 setSelectedDraft(oldArr); 
+             }
         }
         setConditionParts([]); 
-        // console.log("--- Exiting BoundaryInsert (NEW ADDITION) block ---");
         return; 
     }
 } // End of applyEdit
