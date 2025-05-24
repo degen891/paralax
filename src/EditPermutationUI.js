@@ -157,13 +157,13 @@ export default function EditPermutationUI() {
     const isReplacement = removedLen > 0 && insertedText.length > 0;
 
     // 1) Detect pure sentence addition: no removal, standalone sentence
-    const isSentenceAddition = removedLen === 0 && /^[^.?!;:]+[.?!;:]$/.test(insertedText.trim());
-    if (isSentenceAddition) {
-      const newDrafts = [...drafts];
-      const newEdges = [];
-      const seenKeys = new Set(newDrafts.map(d => d.map(c => c.id).join(",")));
-      drafts.forEach(dArr => {
-        // If user-selected conditions exist, only apply to the current selected draft
+    const newDrafts = [...drafts];
+    const newEdges = [];
+    const seenKeys = new Set(newDrafts.map(d => d.map(c => c.id).join(",")));
+    drafts.forEach(dArr => {
+                // Enforce user-selected ID conditions
+        const idArr = dArr.map(c => c.id);
+        if (conditionParts.length && !conditionParts.every(cond => idSeqExists(idArr, cond))) return;
         if (conditionParts.length && dArr !== selectedDraft) return;
         const before = dArr.slice(0, prefixLen);
         const after = dArr.slice(prefixLen);
