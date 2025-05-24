@@ -139,7 +139,7 @@ setHistory([]);
   function applyEdit() {
     const oldArr = selectedDraft; //
 const oldText = charArrayToString(oldArr); //
-const newText = currentEditText; // (This is the state of the editor after user's changes)
+const newText = currentEditText; // 
 
     let prefixLen = 0;
 const maxPref = Math.min(oldText.length, newText.length); //
@@ -151,9 +151,9 @@ while (
       oldText[oldText.length - 1 - suffixLen] === newText[newText.length - 1 - suffixLen]
     ) suffixLen++; //
 const removedLen = oldText.length - prefixLen - suffixLen;
-    const baseInsertedText = newText.slice(prefixLen, newText.length - suffixLen); // Diff 'insertedText'
+    const baseInsertedText = newText.slice(prefixLen, newText.length - suffixLen); 
 const isReplacement = removedLen > 0 && baseInsertedText.length > 0;
-const isSentenceAddition = removedLen === 0 && /^[^.?!;:]+[.?!;:]$/.test(baseInsertedText.trim()); // Condition based on trimmed diff
+const isSentenceAddition = removedLen === 0 && /^[^.?!;:]+[.?!;:]$/.test(baseInsertedText.trim()); 
 if (isSentenceAddition) {
       const uniquePrecedingContextIds = [...new Set(oldArr.slice(0, prefixLen).map(c => c.id))];
 
@@ -223,29 +223,29 @@ if (isSentenceAddition) {
           }
 
           if (containingSentenceEnd !== -1) {
-            insertionPointInDArr = containingSentenceEnd + 1; 
+            insertionPointInDArr = containingSentenceEnd + 1;
+            // MODIFICATION: If the character at the determined insertion point is a newline,
+            // advance the insertion point past this newline to preserve it in the 'before' part.
+            if (insertionPointInDArr < targetDraftText.length && targetDraftText.charAt(insertionPointInDArr) === '\n') {
+                insertionPointInDArr++;
+            }
+            // END MODIFICATION
           } else {
             insertionPointInDArr = (anchorIdIndexInDArr >= 0 && anchorIdIndexInDArr < targetDraftText.length) ? anchorIdIndexInDArr + 1 : targetDraftText.length;
             if (insertionPointInDArr > targetDraftText.length) insertionPointInDArr = targetDraftText.length;
           }
         }
         
-        // MODIFICATION: Construct textToInsert, preserving trailing newline from currentEditText if present
-        let textToInsert = baseInsertedText; // Start with the diff's inserted text
-        const charAfterInsertedInNewTextIndex = prefixLen + baseInsertedText.length;
-        if (charAfterInsertedInNewTextIndex < newText.length && // Ensure index is within bounds of newText
-            newText.charAt(charAfterInsertedInNewTextIndex) === '\n' &&
-            baseInsertedText.charAt(baseInsertedText.length - 1) !== '\n') {
-          textToInsert += '\n';
-        }
-        // END MODIFICATION
-
-        // Apply leading space logic to the potentially newline-terminated textToInsert
+        // Use baseInsertedText directly, as it represents the exact diff.
+        // The isSentenceAddition check uses baseInsertedText.trim() only for classification.
+        let textToInsert = baseInsertedText; 
+        
+        // Apply leading space logic
         if (insertionPointInDArr > 0 && 
             insertionPointInDArr <= targetDraftText.length && 
             !/[\s\n]/.test(targetDraftText.charAt(insertionPointInDArr - 1)) && 
-            textToInsert.length > 0 && // Ensure textToInsert is not empty before charAt
-            textToInsert.charAt(0) !== ' ') {
+            textToInsert.length > 0 && 
+            textToInsert.charAt(0) !== ' ' && textToInsert.charAt(0) !== '\n' ) { // Also check not starting with \n
           textToInsert = ' ' + textToInsert;
         }
 
@@ -274,6 +274,7 @@ if (matched) {
       return; //
     }
 
+    // Fallback to original logic for other types of edits
     const autoSpecs = getAutoConditions(oldArr, prefixLen, removedLen); //
 const newDraftsArr = [...drafts]; //
     const newEdges = []; //
@@ -288,7 +289,7 @@ const pos = findSegmentIndex(idArr, segmentIds); //
         if (pos < 0) continue;
         const before = dArr.slice(0, pos);
 const after = dArr.slice(pos + removedLen); //
-        const insArr = Array.from(baseInsertedText).map(ch => ({ id: generateCharId(), char: ch })); // Use baseInsertedText here
+        const insArr = Array.from(baseInsertedText).map(ch => ({ id: generateCharId(), char: ch })); //
 updated = [...before, ...insArr, ...after];
       } else { 
         for (let spec of autoSpecs) { //
@@ -297,7 +298,7 @@ if (pos < 0) continue;
           if (spec.type === 'remove') { //
             updated = [...updated.slice(0, pos), ...updated.slice(pos + removedLen)]; //
 } else { // spec.type === 'insert'
-            const insArr = Array.from(baseInsertedText).map(ch => ({ id: generateCharId(), char: ch })); // Use baseInsertedText here
+            const insArr = Array.from(baseInsertedText).map(ch => ({ id: generateCharId(), char: ch })); //
 const insPos = pos + spec.relOffset; //
             updated = [...updated.slice(0, insPos), ...insArr, ...updated.slice(insPos)];
 }
