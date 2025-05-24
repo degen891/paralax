@@ -196,8 +196,29 @@ while (
     ) suffixLen++;
     console.log('[applyEdit] Diffing: prefixLen:', prefixLen, 'suffixLen:', suffixLen);
 const removedLen = oldText.length - prefixLen - suffixLen;
+    
+    // --- BEGIN NEW DETAILED LOGS for baseInsertedText ---
+    console.log(`[applyEdit] DEBUG: newText for slice: "${newText}" (length: ${newText.length})`);
+    console.log(`[applyEdit] DEBUG: prefixLen for slice: ${prefixLen}`);
+    let endIndexForSlice = newText.length - suffixLen;
+    console.log(`[applyEdit] DEBUG: end index for slice (newText.length - suffixLen): ${endIndexForSlice}`);
+    let debugSliceRegion = "";
+    // Ensure start index is less than end index, and indices are within bounds
+    if (prefixLen < endIndexForSlice && prefixLen >= 0 && endIndexForSlice <= newText.length) {
+        for (let i = prefixLen; i < endIndexForSlice; i++) {
+            debugSliceRegion += `char: ${newText[i]} (code: ${newText.charCodeAt(i)}) | `;
+        }
+    } else {
+        debugSliceRegion = "[Skipped: Invalid slice indices]";
+        if (prefixLen >= endIndexForSlice) debugSliceRegion += ` (prefixLen ${prefixLen} >= endIndexForSlice ${endIndexForSlice})`;
+        if (prefixLen < 0) debugSliceRegion += ` (prefixLen ${prefixLen} < 0)`;
+        if (endIndexForSlice > newText.length) debugSliceRegion += ` (endIndexForSlice ${endIndexForSlice} > newText.length ${newText.length})`;
+    }
+    console.log(`[applyEdit] DEBUG: Expected slice region in newText (indices ${prefixLen} to ${endIndexForSlice -1}): ${debugSliceRegion}`);
+    // --- END NEW DETAILED LOGS ---
+
     const baseInsertedText = newText.slice(prefixLen, newText.length - suffixLen);
-    console.log('[applyEdit] Diffing: removedLen:', removedLen, 'baseInsertedText:', `"${baseInsertedText}"`);
+    console.log('[applyEdit] Diffing: removedLen:', removedLen, 'baseInsertedText:', `"${baseInsertedText}"`); // Existing log for baseInsertedText
 const isReplacement = removedLen > 0 && baseInsertedText.length > 0;
     const isSentenceAddition = removedLen === 0 && /^[^.?!;:]+[.?!;:]$/.test(baseInsertedText.trim());
     console.log('[applyEdit] Type check: isReplacement:', isReplacement, 'isSentenceAddition:', isSentenceAddition);
