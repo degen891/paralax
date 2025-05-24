@@ -99,6 +99,12 @@ useEffect(() => {
     return () => window.removeEventListener("keydown", handleKey);
   }, [history, redoStack, drafts]); //
 function saveHistory(newDrafts, newEdges) {
+    console.log(`SAVING HISTORY: newDrafts count = ${newDrafts.length}, newEdges count = ${newEdges.length}`);
+    // console.log("Final newDrafts strings to be saved:", newDrafts.map(d => charArrayToString(d)));
+    // To avoid overly long logs for draft content, just log the count or keys
+    console.log("Final newDrafts keys to be saved:", newDrafts.map(d => d.map(c=>c.id).join(',').substring(0,30) + "..."));
+
+
     setHistory(h => [...h, drafts]);
     setRedoStack([]);
     setDrafts(newDrafts);
@@ -138,6 +144,7 @@ setHistory([]);
   }
 
   function applyEdit() {
+    console.log("--- applyEdit called ---");
     const oldArr = selectedDraft; 
     const oldText = charArrayToString(oldArr); 
 const newText = currentEditText;  
@@ -154,6 +161,9 @@ while (
 const removedLen = oldText.length - prefixLen - suffixLen;
     const baseInsertedText = newText.slice(prefixLen, newText.length - suffixLen); 
     
+    console.log(`applyEdit - Diff: oldText="${oldText}" | newText="${newText}"`);
+    console.log(`applyEdit - prefixLen=${prefixLen} ("${oldText.slice(0,prefixLen)}") | suffixLen=${suffixLen} ("${oldText.slice(oldText.length-suffixLen)}") | removedLen=${removedLen} | baseInsertedText="${baseInsertedText}"`);
+
     let isEditWithinExistingSentence = false;
     if (oldArr.length > 0 && prefixLen < oldText.length) { 
         const beforePara = oldText.lastIndexOf("\n", prefixLen - 1);
@@ -178,22 +188,35 @@ const removedLen = oldText.length - prefixLen - suffixLen;
             }
         }
     }
+    console.log("applyEdit - isEditWithinExistingSentence:", isEditWithinExistingSentence);
+    
 
     if (isEditWithinExistingSentence || removedLen > 0) {
+        console.log("%cAPPLY_EDIT: Handling as IN-SENTENCE or REMOVAL/REPLACEMENT edit via autoSpecs.", "color: orange;");
         const autoSpecs = getAutoConditions(oldArr, prefixLen, removedLen); 
+        console.log("applyEdit - autoSpecs:", autoSpecs);
         const newDraftsArr = [...drafts]; 
         const newEdges = []; 
-        const seen = new Set(newDraftsArr.map(d => d.map(c => c.id).join(","))); 
-        
+        const initialSeenKeys = new Set(newDraftsArr.map(d => d.map(c => c.id).join(",")));
+        console.log("applyEdit - Initial newDraftsArr count:", newDraftsArr.length, "Initial seenKeys size:", initialSeenKeys.size);
+        // console.log("applyEdit - Initial newDrafts strings:", newDraftsArr.map(d=>charArrayToString(d)));
+
+
         for (let dArr of drafts) { 
+          const currentDArrText = charArrayToString(dArr);
+          console.log(`autoSpecs Path - Processing dArr: "${currentDArrText}"`);
           let updated = [...dArr]; 
           const idArr = dArr.map(c => c.id);
-          if (conditionParts.length && !conditionParts.every(condObj => idSeqExists(idArr, condObj.ids))) continue; 
+          if (conditionParts.length && !conditionParts.every(condObj => idSeqExists(idArr, condObj.ids))) {
+            console.log(`autoSpecs Path - dArr "${currentDArrText}" failed conditionParts, skipping.`);
+            continue;
+          }
 
           const isActualReplacement = removedLen > 0 && baseInsertedText.length > 0;
-          let currentDArrModified = false;
+          let currentDArrModifiedByThisLogic = false;
 
           if (isActualReplacement) { 
+            console.log(`autoSpecs Path - Handling as Replacement for dArr "${currentDArrText}"`);
             const specForReplacement = autoSpecs.find(s => s.type === 'remove'); 
             const segmentIdsToReplace = specForReplacement ? specForReplacement.segmentIds : oldArr.slice(prefixLen, prefixLen + removedLen).map(c => c.id);
             const pos = findSegmentIndex(idArr, segmentIdsToReplace); 
@@ -203,69 +226,74 @@ const removedLen = oldText.length - prefixLen - suffixLen;
                 const after = dArr.slice(pos + removedLen); 
                 const insArr = Array.from(baseInsertedText).map(ch => ({ id: generateCharId(), char: ch })); 
                 updated = [...before, ...insArr, ...after];
-                currentDArrModified = true;
+                currentDArrModifiedByThisLogic = true;
             } else if (segmentIdsToReplace.length === 0 && baseInsertedText.length > 0) { 
+                 // This case could be an insertion if original removedLen was 0 but ended up in this path due to isEditWithinExistingSentence
                  let appliedInsert = false;
-                 for (let spec of autoSpecs) { 
-                     if (spec.type === 'insert') {
-                        const insertPosBase = findSegmentIndex(idArr, spec.segmentIds);
-                        if (insertPosBase < 0) continue;
-                        const insArr = Array.from(baseInsertedText).map(ch => ({ id: generateCharId(), char: ch })); 
-                        const actualInsertPos = insertPosBase + spec.relOffset; 
-                        updated = [...dArr.slice(0, actualInsertPos), ...insArr, ...dArr.slice(actualInsertPos)];
-                        appliedInsert = true;
-                        currentDArrModified = true;
-                        break; 
-                     }
-                 }
-                 if (!appliedInsert) continue;
-            } else {
-                continue; 
-            }
-          } else if (removedLen > 0 && baseInsertedText.length === 0) { // Pure Deletion
-            let appliedDelete = false;
-            for (let spec of autoSpecs) { 
-              if (spec.type === 'remove') {
-                const pos = findSegmentIndex(idArr, spec.segmentIds); 
-                if (pos < 0) continue;
-                // Ensure `removedLen` from overall diff is used if spec refers to the exact segment.
-                // Or, if spec.segmentIds has its own implied length:
-                const lengthToRemove = spec.segmentIds.length; // Using spec's own segment length
-                updated = [...updated.slice(0, pos), ...updated.slice(pos + lengthToRemove)]; 
-                currentDArrModified = true;
-                appliedDelete = true;
-                break; 
-              }
-            }
-            if(!appliedDelete) continue;
-          } else if (removedLen === 0 && baseInsertedText.length > 0) { // Pure Insertion (within sentence)
-             let appliedInsert = false;
-             for (let spec of autoSpecs) {
-                 if (spec.type === 'insert') {
+                 for (let spec of autoSpecs.filter(s => s.type === 'insert')) { 
                     const insertPosBase = findSegmentIndex(idArr, spec.segmentIds);
                     if (insertPosBase < 0) continue;
                     const insArr = Array.from(baseInsertedText).map(ch => ({ id: generateCharId(), char: ch })); 
                     const actualInsertPos = insertPosBase + spec.relOffset; 
                     updated = [...dArr.slice(0, actualInsertPos), ...insArr, ...dArr.slice(actualInsertPos)];
                     appliedInsert = true;
-                    currentDArrModified = true;
+                    currentDArrModifiedByThisLogic = true;
+                    console.log(`autoSpecs Path - Applied insert spec for dArr "${currentDArrText}"`);
                     break; 
                  }
+                 if (!appliedInsert) { console.log(`autoSpecs Path - No applicable insert spec for dArr "${currentDArrText}"`); continue; }
+            } else {
+                console.log(`autoSpecs Path - Replacement segment not found or invalid for dArr "${currentDArrText}"`);
+                continue; 
+            }
+          } else if (removedLen > 0 && baseInsertedText.length === 0) { // Pure Deletion
+            console.log(`autoSpecs Path - Handling as Pure Deletion for dArr "${currentDArrText}"`);
+            let appliedDelete = false;
+            for (let spec of autoSpecs.filter(s => s.type === 'remove')) { 
+              const pos = findSegmentIndex(idArr, spec.segmentIds); 
+              if (pos < 0) continue;
+              const lengthToRemove = spec.segmentIds.length; 
+              updated = [...updated.slice(0, pos), ...updated.slice(pos + lengthToRemove)]; 
+              currentDArrModifiedByThisLogic = true;
+              appliedDelete = true;
+              console.log(`autoSpecs Path - Applied delete spec for dArr "${currentDArrText}"`);
+              break; 
+            }
+            if(!appliedDelete) { console.log(`autoSpecs Path - No applicable delete spec for dArr "${currentDArrText}"`); continue; }
+          } else if (removedLen === 0 && baseInsertedText.length > 0) { // Pure Insertion (within sentence)
+            console.log(`autoSpecs Path - Handling as Pure Insertion for dArr "${currentDArrText}"`);
+             let appliedInsert = false;
+             for (let spec of autoSpecs.filter(s => s.type === 'insert')) {
+                const insertPosBase = findSegmentIndex(idArr, spec.segmentIds);
+                if (insertPosBase < 0) continue;
+                const insArr = Array.from(baseInsertedText).map(ch => ({ id: generateCharId(), char: ch })); 
+                const actualInsertPos = insertPosBase + spec.relOffset; 
+                updated = [...dArr.slice(0, actualInsertPos), ...insArr, ...dArr.slice(actualInsertPos)];
+                appliedInsert = true;
+                currentDArrModifiedByThisLogic = true;
+                console.log(`autoSpecs Path - Applied insert spec for dArr "${currentDArrText}"`);
+                break; 
              }
-             if (!appliedInsert) continue;
+             if (!appliedInsert) { console.log(`autoSpecs Path - No applicable insert spec for dArr "${currentDArrText}"`); continue; }
           } else { 
+            console.log(`autoSpecs Path - No change for dArr "${currentDArrText}"`);
             continue;
           }
 
-          if (currentDArrModified) {
+          if (currentDArrModifiedByThisLogic) {
             const key = updated.map(c => c.id).join(",");
-            if (!seen.has(key)) { 
+            if (!initialSeenKeys.has(key)) { // Check against initial set before adding
               if (!isDraftContentEmpty(updated)) { 
-                seen.add(key); 
+                console.log(`autoSpecs Path - Adding new draft from dArr="${currentDArrText}": "${charArrayToString(updated)}"`);
+                initialSeenKeys.add(key); // Add to set to prevent adding same new perm twice from different original drafts
                 newDraftsArr.push(updated);
                 newEdges.push({ from: dArr, to: updated });
+              } else {
+                console.log(`autoSpecs Path - Updated draft for "${currentDArrText}" is empty, not adding.`);
               }
-            } 
+            } else {
+              console.log(`autoSpecs Path - Key for updated draft "${charArrayToString(updated)}" already seen.`);
+            }
           }
         } 
         
@@ -281,36 +309,44 @@ const removedLen = oldText.length - prefixLen - suffixLen;
              if (preservedSelectedDraft) {
                  setSelectedDraft(preservedSelectedDraft);
                  setCurrentEditText(charArrayToString(preservedSelectedDraft));
-             } else if (newEdges.length > 0 && newEdges[0].to ) { // Fallback if selected draft was removed/changed key
+             } else if (newEdges.length > 0 && newEdges[0].to ) { 
                  setSelectedDraft(newEdges[0].to);
                  setCurrentEditText(charArrayToString(newEdges[0].to));
+             } else if (newDraftsArr.find(d => d === oldArr)) { 
+                setSelectedDraft(oldArr);
+                setCurrentEditText(oldText);
              } else if (newDraftsArr.length > 0) {
                  setSelectedDraft(newDraftsArr[0]);
                  setCurrentEditText(charArrayToString(newDraftsArr[0]));
-             } else {
+             } else { 
                  setCurrentEditText(oldText); 
                  setSelectedDraft(oldArr); 
              }
         }
         setConditionParts([]); 
+        console.log("%cAPPLY_EDIT: --- Exiting autoSpecs Path ---", "color: orange;");
 
-    } else { // This means: isEditWithinExistingSentence is FALSE AND removedLen is 0
-        // **HANDLE AS NEW ADDITION AT A BOUNDARY (using last matching ID logic)**
+    } else { 
+        console.log("%cAPPLY_EDIT: Handling as PURE INSERTION AT BOUNDARY using last matching ID.", "color: green;");
         const uniquePrecedingContextIds = [...new Set(oldArr.slice(0, prefixLen).map(c => c.id))];
         
-        // MODIFICATION: Reverted to starting with current drafts for accumulation
         const newDrafts = [...drafts]; 
         const newEdges = []; 
         const seenKeys = new Set(newDrafts.map(d => d.map(c => c.id).join(","))); 
-        // END MODIFICATION
+        console.log("BoundaryInsert - Initial newDrafts count:", newDrafts.length, "Initial seenKeys size:", seenKeys.size);
+        // console.log("BoundaryInsert - Initial newDrafts strings:", newDrafts.map(d=>charArrayToString(d)));
         
         const masterInsArr = Array.from(baseInsertedText).map(ch => ({ id: generateCharId(), char: ch }));
         
-        drafts.forEach(dArr => { // Iterate over original drafts to generate permutations
+        drafts.forEach(dArr => { 
             const targetIdArr = dArr.map(c => c.id);
             const targetDraftText = charArrayToString(dArr); 
+            console.log(`BoundaryInsert - Processing dArr: "${targetDraftText}"`);
 
-            if (conditionParts.length && !conditionParts.every(condObj => idSeqExists(targetIdArr, condObj.ids))) return; 
+            if (conditionParts.length && !conditionParts.every(condObj => idSeqExists(targetIdArr, condObj.ids))) {
+                console.log(`BoundaryInsert - dArr "${targetDraftText}" failed conditionParts, skipping permutation.`);
+                return; 
+            }
 
             let anchorIdIndexInDArr = -1; 
             if (uniquePrecedingContextIds.length === 0) {
@@ -327,6 +363,7 @@ const removedLen = oldText.length - prefixLen - suffixLen;
             if (anchorIdIndexInDArr === -1 && uniquePrecedingContextIds.length > 0) {
                 anchorIdIndexInDArr = -2; 
             }
+            // console.log(`BoundaryInsert - anchorIdIndexInDArr for "${targetDraftText}": ${anchorIdIndexInDArr}`);
 
             let insertionPointInDArr;
             if (anchorIdIndexInDArr === -2) { 
@@ -345,6 +382,8 @@ const removedLen = oldText.length - prefixLen - suffixLen;
                         if (k === 0) effectiveAnchorForSentenceLookup = 0; 
                     }
                 }
+                // console.log(`BoundaryInsert - effectiveAnchorForSentenceLookup: ${effectiveAnchorForSentenceLookup} (char: "${targetDraftText.charAt(effectiveAnchorForSentenceLookup)}")`);
+
                 let anchorSegmentText = null;
                 let anchorSegmentEndIndex = -1; 
                 const sentenceBoundaryRegex = /[^.?!;:\n]+(?:[.?!;:\n]|$)|[.?!;:\n]/g; 
@@ -356,24 +395,29 @@ const removedLen = oldText.length - prefixLen - suffixLen;
                     if (effectiveAnchorForSentenceLookup >= segmentStartIndex && effectiveAnchorForSentenceLookup <= segmentEndBoundary) {
                         anchorSegmentText = match[0];
                         anchorSegmentEndIndex = segmentEndBoundary;
+                        // console.log(`BoundaryInsert - Segment containing effective anchor: "${anchorSegmentText}", ends at index: ${anchorSegmentEndIndex}`);
                         break;
                     }
                 }
                 if (anchorSegmentText !== null) {
                     const trimmedSegment = anchorSegmentText.trim().replace(/\n$/, '');
                     const isTrueSentence = /[.?!;:]$/.test(trimmedSegment);
+                    // console.log(`BoundaryInsert - Segment "${anchorSegmentText}" (trimmed for test: "${trimmedSegment}") isTrueSentence: ${isTrueSentence}`);
                     if (isTrueSentence) {
                         insertionPointInDArr = anchorSegmentEndIndex + 1;
                     } else { 
                         insertionPointInDArr = anchorIdIndexInDArr + 1; 
                     }
                 } else { 
+                    // console.log(`BoundaryInsert - No segment found for effectiveAnchor. Fallback.`);
                     insertionPointInDArr = (anchorIdIndexInDArr >= 0 && anchorIdIndexInDArr < targetDraftText.length) ? anchorIdIndexInDArr + 1 : targetDraftText.length;
                     if (insertionPointInDArr > targetDraftText.length) insertionPointInDArr = targetDraftText.length;
                 }
+                // console.log(`BoundaryInsert - Initial insertionPointInDArr for "${targetDraftText}": ${insertionPointInDArr}`);
                 while (insertionPointInDArr < targetDraftText.length && targetDraftText.charAt(insertionPointInDArr) === '\n') {
                     insertionPointInDArr++;
                 }
+                // if (insertionPointInDArr !== initialInsertionPoint) console.log(`BoundaryInsert - Advanced insertionPointInDArr past newlines to: ${insertionPointInDArr}`);
             }
             
             const insArr = masterInsArr; 
@@ -381,17 +425,24 @@ const removedLen = oldText.length - prefixLen - suffixLen;
             const after = dArr.slice(insertionPointInDArr);
             const updated = [...before, ...insArr, ...after];
             
+            // console.log(`BoundaryInsert - For dArr "${targetDraftText}", updated to "${charArrayToString(updated)}"`);
+            // console.log(`BoundaryInsert -   before="${charArrayToString(before)}", inserted="${charArrayToString(insArr)}", after="${charArrayToString(after)}"`);
+
             const key = updated.map(c => c.id).join(","); 
             if (!seenKeys.has(key)) { 
                 if (!isDraftContentEmpty(updated)) {  
                     seenKeys.add(key); 
-                    newDrafts.push(updated); // Push to the array that started with [...drafts]
+                    newDrafts.push(updated); 
                     newEdges.push({ from: dArr, to: updated }); 
+                    // console.log(`BoundaryInsert - Added updated draft: "${charArrayToString(updated)}"`);
                 }
-            }
+            } 
+            // else {
+            //     console.log(`BoundaryInsert - Updated draft key for "${charArrayToString(updated)}" already seen.`);
+            // }
         });
         
-        saveHistory(newDrafts, newEdges); // newDrafts now contains originals + new unique permutations
+        saveHistory(newDrafts, newEdges); 
         
         const directPermutationOfSelected = newEdges.find(edge => edge.from === oldArr);
         if (directPermutationOfSelected) {
@@ -406,11 +457,11 @@ const removedLen = oldText.length - prefixLen - suffixLen;
              } else if (newEdges.length > 0 && newEdges[0].to ) { 
                  setSelectedDraft(newEdges[0].to);
                  setCurrentEditText(charArrayToString(newEdges[0].to));
-             } else if (newDrafts.find(d => d === oldArr)) { // If oldArr is still in newDrafts (no changes made from it)
+             } else if (newDrafts.find(d => d === oldArr)) { 
                 setSelectedDraft(oldArr);
                 setCurrentEditText(oldText);
              } else if (newDrafts.length > 0) {
-                 setSelectedDraft(newDrafts[0]); // Fallback, should be improved
+                 setSelectedDraft(newDrafts[0]); 
                  setCurrentEditText(charArrayToString(newDrafts[0]));
              } else { 
                  setCurrentEditText(oldText); 
@@ -418,6 +469,7 @@ const removedLen = oldText.length - prefixLen - suffixLen;
              }
         }
         setConditionParts([]); 
+        console.log("%cAPPLY_EDIT: --- Exiting BoundaryInsert (NEW ADDITION) block ---", "color: green;");
         return; 
     }
 } // End of applyEdit
