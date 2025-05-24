@@ -159,80 +159,88 @@ while (
 const removedLen = oldText.length - prefixLen - suffixLen;
     const baseInsertedText = newText.slice(prefixLen, newText.length - suffixLen);
     
-    // --- MODIFICATION START: New logic for isSentenceAddition ---
     let isSentenceAddition;
 
     if (removedLen > 0) {
-      isSentenceAddition = false; // Deletions or replacements are handled by the general edit logic
+      isSentenceAddition = false; 
     } else {
-      // Pure insertion (removedLen === 0)
       const trimmedBaseInsertedText = baseInsertedText.trim();
-      // Regex to check if the inserted text itself has the structure of a sentence [cite: 38]
       const insertedTextIsSentenceStructurally = /^[^.?!;:]+[.?!;:]$/.test(trimmedBaseInsertedText);
 
       if (oldText.length === 0) {
-        // If original text is empty, any insertion is treated as a "new addition".
         isSentenceAddition = true;
       } else {
-        const sentences = [];
-        // Regex to define the "scope of an existing sentence" in oldText [cite: 15]
+        // --- MODIFICATION START: Refined locationStatus logic for sentence scope ---
+        let locationStatus = 'OUTSIDE'; // Default: insertion is outside any defined sentence content
+
         const sentenceDefinitionRegex = /[^.?!;:]+[.?!;:]/g; 
         let match;
-        // Ensure regex search starts from the beginning of oldText for each applyEdit call
         sentenceDefinitionRegex.lastIndex = 0; 
+        
+        const sentencesFound = [];
         while ((match = sentenceDefinitionRegex.exec(oldText)) !== null) {
-          sentences.push({ start: match.index, end: match.index + match[0].length });
+          sentencesFound.push({
+            text: match[0],
+            start: match.index,
+            end: match.index + match[0].length
+          });
         }
 
-        let locationStatus = 'OUTSIDE'; // Default: insertion is outside any defined sentence
+        if (sentencesFound.length > 0) {
+          for (const sentence of sentencesFound) {
+            const originalSentenceText = sentence.text;
+            const trimmedSentenceText = originalSentenceText.trim();
 
-        if (sentences.length > 0) {
-          for (const sentence of sentences) {
-            if (prefixLen === sentence.start) {
-              locationStatus = 'AT_START';
+            if (trimmedSentenceText.length === 0) continue; // Skip purely whitespace "sentences"
+
+            const leadingWhitespaceLength = originalSentenceText.indexOf(trimmedSentenceText[0]);
+            const effectiveContentStart = sentence.start + leadingWhitespaceLength;
+            const effectiveContentEnd = effectiveContentStart + trimmedSentenceText.length;
+
+            if (prefixLen === effectiveContentStart) {
+              locationStatus = 'AT_START_EFFECTIVE';
               break;
             }
-            if (prefixLen > sentence.start && prefixLen < sentence.end) {
-              locationStatus = 'WITHIN';
+            if (prefixLen > effectiveContentStart && prefixLen < effectiveContentEnd) {
+              locationStatus = 'WITHIN_EFFECTIVE';
               break;
             }
           }
         } else if (oldText.trim().length > 0) {
-          // No formal sentences found, but text exists. Treat as a single block.
-          if (prefixLen === 0) {
-            locationStatus = 'AT_START_OF_TEXT_BLOCK';
-          } else if (prefixLen > 0 && prefixLen < oldText.length) {
-            locationStatus = 'WITHIN_TEXT_BLOCK';
-          } else { // prefixLen === oldText.length
-            locationStatus = 'OUTSIDE'; // At the end of the text block
+          // No formal sentences, but oldText has content. Treat oldText itself as the block.
+          const trimmedOldText = oldText.trim(); // [cite: 5]
+          const leadingWhitespaceLength = oldText.indexOf(trimmedOldText[0]);
+          const effectiveContentStart = leadingWhitespaceLength;
+          const effectiveContentEnd = effectiveContentStart + trimmedOldText.length;
+
+          if (prefixLen === effectiveContentStart) {
+            locationStatus = 'AT_START_EFFECTIVE';
+          } else if (prefixLen > effectiveContentStart && prefixLen < effectiveContentEnd) {
+            locationStatus = 'WITHIN_EFFECTIVE';
+          } else {
+            locationStatus = 'OUTSIDE'; // Relative to the trimmed content of oldText
           }
         }
-        // If oldText is whitespace only and no sentences found, it remains 'OUTSIDE'.
-
-        if (locationStatus === 'WITHIN' || locationStatus === 'WITHIN_TEXT_BLOCK') {
-          // Insertion is within an existing sentence or text block.
+        // If oldText is all whitespace, locationStatus remains 'OUTSIDE'.
+        
+        if (locationStatus === 'WITHIN_EFFECTIVE') {
           isSentenceAddition = false;
-        } else if (locationStatus === 'AT_START' || locationStatus === 'AT_START_OF_TEXT_BLOCK') {
-          // Insertion is at the start of an existing sentence or text block.
-          // Structure of inserted text matters here.
+        } else if (locationStatus === 'AT_START_EFFECTIVE') {
           if (insertedTextIsSentenceStructurally) {
-            isSentenceAddition = true; // New sentence addition
+            isSentenceAddition = true; 
           } else {
-            isSentenceAddition = false; // In-sentence edit (to the sentence/block that starts here)
+            isSentenceAddition = false; 
           }
         } else { // locationStatus === 'OUTSIDE'
-          // Insertion is between sentences, or at the very start/end of text not covered above.
           isSentenceAddition = true;
         }
+        // --- MODIFICATION END ---
       }
     }
-    // --- MODIFICATION END ---
-
+    
 const isReplacement = removedLen > 0 && baseInsertedText.length > 0;
-    // The original isSentenceAddition line is now replaced by the logic above.
-    // const isSentenceAddition = removedLen === 0 && /^[^.?!;:]+[.?!;:]$/.test(baseInsertedText.trim());
 
-if (isSentenceAddition) { // This 'if' block is for new additions
+if (isSentenceAddition) { 
       const uniquePrecedingContextIds = [...new Set(oldArr.slice(0, prefixLen).map(c => c.id))];
 
       const newDrafts = [...drafts];
@@ -292,16 +300,15 @@ break;
           
           let anchorSegmentText = null;
 let anchorSegmentEndIndex = -1; 
-          // MODIFICATION: Restored the corrected sentenceBoundaryRegex
           const sentenceBoundaryRegex = /[^.?!;:\n]+(?:[.?!;:\n]|$)|[.?!;:\n]/g;
-let match;
+let matchBoundary; // Renamed to avoid conflict with 'match' from outer scope
           sentenceBoundaryRegex.lastIndex = 0; 
-          while ((match = sentenceBoundaryRegex.exec(targetDraftText)) !== null) {
-            const segmentStartIndex = match.index;
-const segmentEndBoundary = match.index + match[0].length -1; 
+          while ((matchBoundary = sentenceBoundaryRegex.exec(targetDraftText)) !== null) {
+            const segmentStartIndex = matchBoundary.index;
+const segmentEndBoundary = matchBoundary.index + matchBoundary[0].length -1; 
             
             if (effectiveAnchorForSentenceLookup >= segmentStartIndex && effectiveAnchorForSentenceLookup <= segmentEndBoundary) {
-              anchorSegmentText = match[0];
+              anchorSegmentText = matchBoundary[0];
 anchorSegmentEndIndex = segmentEndBoundary;
               break;
             }
@@ -349,7 +356,6 @@ if (matched) {
       return;
 }
 
-    // This 'else' block is for in-sentence editions (insertions, deletions, replacements)
     const autoSpecs = getAutoConditions(oldArr, prefixLen, removedLen); 
     const newDraftsArr = [...drafts]; 
     const newEdges = [];
@@ -358,30 +364,21 @@ const seen = new Set(newDraftsArr.map(d => d.map(c => c.id).join(",")));
       let updated = [...dArr];
 const idArr = dArr.map(c => c.id);
       if (conditionParts.length && !conditionParts.every(condObj => idSeqExists(idArr, condObj.ids))) continue;
-if (isReplacement) { // This 'isReplacement' is true if removedLen > 0 and baseInsertedText.length > 0
-        const { segmentIds } = autoSpecs[0]; // Should be a 'remove' spec followed by an effective insert
+if (isReplacement) { 
+        const { segmentIds } = autoSpecs[0];
 const pos = findSegmentIndex(idArr, segmentIds); 
-        if (pos < 0) continue; // Segment to be replaced not found in this draft
+        if (pos < 0) continue;
         const before = dArr.slice(0, pos);
 const after = dArr.slice(pos + removedLen); 
         const insArr = Array.from(baseInsertedText).map(ch => ({ id: generateCharId(), char: ch }));
 updated = [...before, ...insArr, ...after];
-      } else { // Not a replacement, so either pure insertion (handled by `isSentenceAddition` above) or pure deletion
-                 // If isSentenceAddition was false due to location or structure, it's an in-sentence insertion.
-                 // Or, if removedLen > 0 and baseInsertedText.length === 0 (pure deletion).
+      } else { 
         for (let spec of autoSpecs) { 
           const pos = findSegmentIndex(idArr, spec.segmentIds);
 if (pos < 0) continue;
-          if (spec.type === 'remove') { // This handles pure deletions
-            // 'removedLen' from the top scope is the length of text removed from selectedDraft.
-            // autoSpecs for 'remove' uses segmentIds from selectedDraft.
-            // The length of this segment in dArr might differ if dArr is a permutation.
-            // However, getAutoConditions for remove uses arr.slice(offset, offset + removedLen).map(c => c.id).
-            // So spec.segmentIds.length should be correct for the removal length from selectedDraft.
-            // We need to ensure this applies correctly if target dArr has a different structure around these IDs.
-            // The current logic removes by matching segmentIds.
-            updated = [...updated.slice(0, pos), ...updated.slice(pos + spec.segmentIds.length)]; // Use spec.segmentIds.length for removal length
-} else { // spec.type === 'insert' This handles in-sentence insertions
+          if (spec.type === 'remove') { 
+            updated = [...updated.slice(0, pos), ...updated.slice(pos + spec.segmentIds.length)];
+} else { // spec.type === 'insert'
             const insArr = Array.from(baseInsertedText).map(ch => ({ id: generateCharId(), char: ch }));
 const insPos = pos + spec.relOffset; 
             updated = [...updated.slice(0, insPos), ...insArr, ...updated.slice(insPos)];
