@@ -167,10 +167,10 @@ if (isSentenceAddition) {
 
         if (conditionParts.length && !conditionParts.every(condObj => idSeqExists(targetIdArr, condObj.ids))) return; //
 
-        let anchorIdIndexInDArr = -1; 
+        let anchorIdIndexInDArr = -1; // Index in dArr of the actual character ID that matched from context
 
         if (uniquePrecedingContextIds.length === 0) {
-          anchorIdIndexInDArr = -2; 
+          anchorIdIndexInDArr = -2; // Special marker for insertion at the beginning
         } else {
           const precedingIdsSet = new Set(uniquePrecedingContextIds);
           for (let i = targetIdArr.length - 1; i >= 0; i--) { 
@@ -182,15 +182,16 @@ if (isSentenceAddition) {
         }
 
         if (anchorIdIndexInDArr === -1 && uniquePrecedingContextIds.length > 0) {
-          anchorIdIndexInDArr = -2; 
+          anchorIdIndexInDArr = -2; // No context match, policy is to insert at start
         }
 
         let insertionPointInDArr;
 
-        if (anchorIdIndexInDArr === -2) { 
+        if (anchorIdIndexInDArr === -2) { // Insert at the beginning of dArr
           insertionPointInDArr = 0;
-        } else { 
+        } else { // anchorIdIndexInDArr >= 0, a valid index in dArr for the "last matching ID"
           let effectiveAnchorForSentenceLookup = anchorIdIndexInDArr;
+          // Adjust effective anchor if the last matching ID char is whitespace, to find prior punctuation/content
           if (anchorIdIndexInDArr >=0 && anchorIdIndexInDArr < targetDraftText.length) {
             for (let k = anchorIdIndexInDArr; k >= 0; k--) {
               const char = targetDraftText.charAt(k);
@@ -208,28 +209,42 @@ if (isSentenceAddition) {
             }
           }
           
-          let containingSentenceEnd = -1;
+          let anchorSegmentText = null;
+          let anchorSegmentEndIndex = -1;
           const sentenceBoundaryRegex = /[^.?!;:]*[.?!;:\n]|[^.?!;:]+$/g; 
           let match;
           sentenceBoundaryRegex.lastIndex = 0; 
           while ((match = sentenceBoundaryRegex.exec(targetDraftText)) !== null) {
-            const sentenceStartIndex = match.index;
-            const sentenceEndBoundary = match.index + match[0].length -1; 
+            const segmentStartIndex = match.index;
+            const segmentEndBoundary = match.index + match[0].length -1; 
             
-            if (effectiveAnchorForSentenceLookup >= sentenceStartIndex && effectiveAnchorForSentenceLookup <= sentenceEndBoundary) {
-              containingSentenceEnd = sentenceEndBoundary;
+            if (effectiveAnchorForSentenceLookup >= segmentStartIndex && effectiveAnchorForSentenceLookup <= segmentEndBoundary) {
+              anchorSegmentText = match[0];
+              anchorSegmentEndIndex = segmentEndBoundary;
               break;
             }
           }
 
-          if (containingSentenceEnd !== -1) {
-            insertionPointInDArr = containingSentenceEnd + 1;
-            while (insertionPointInDArr < targetDraftText.length && targetDraftText.charAt(insertionPointInDArr) === '\n') {
-                insertionPointInDArr++;
+          // MODIFICATION: Implement user's proposed logic for insertion point
+          if (anchorSegmentText !== null) {
+            // Check if the segment containing the anchor is a "true sentence" (ends in punctuation)
+            // We use replace(/\n$/, '') to correctly test segments like "word.\n" as ending in "."
+            const isTrueSentence = /[.?!;:]$/.test(anchorSegmentText.trim().replace(/\n$/, ''));
+            if (isTrueSentence) {
+              insertionPointInDArr = anchorSegmentEndIndex + 1;
+            } else { // Not a "true sentence" (e.g., "b" or "b\n")
+              // Insert right after the character of the "last matching ID"
+              insertionPointInDArr = anchorIdIndexInDArr + 1; 
             }
-          } else {
+          } else { // Fallback if no segment was found for effectiveAnchorForSentenceLookup (should be rare)
             insertionPointInDArr = (anchorIdIndexInDArr >= 0 && anchorIdIndexInDArr < targetDraftText.length) ? anchorIdIndexInDArr + 1 : targetDraftText.length;
             if (insertionPointInDArr > targetDraftText.length) insertionPointInDArr = targetDraftText.length;
+          }
+          // END MODIFICATION
+
+          // Advance insertionPointInDArr past any immediately following newlines in the original text structure
+          while (insertionPointInDArr < targetDraftText.length && targetDraftText.charAt(insertionPointInDArr) === '\n') {
+              insertionPointInDArr++;
           }
         }
         
@@ -417,7 +432,6 @@ className="w-full p-2 border rounded whitespace-pre-wrap min-h-[80px]"
 
 <div>
             <h2 className="text-xl font-semibold">Version Graph:</h2>
-            {/* Corrected typo: stringDrafs to stringDrafts */}
             <VersionGraph drafts={stringDrafts} edges={stringEdges} onNodeClick={text => { //
               const idx = stringDrafts.indexOf(text); //
 if (idx >= 0) { setSelectedDraft(drafts[idx]); setCurrentEditText(text); } //
