@@ -1,5 +1,5 @@
 // 
-import React, { useState, useEffect, useRef } from "react"; 
+import React, { useState, useEffect, useRef } from "react"; // ENSURED THIS LINE IS ACTIVE
 import VersionGraph from "./VersionGraph";
 // // --- Character ID tracking ---
 let globalCharCounter = 0;
@@ -123,20 +123,6 @@ function getAutoConditions(arr, offset, removedLen) {
   return [{ type: 'insert', segmentIds: segIds, relOffset }];
 }
 
-// Helper to escape HTML for dangerouslySetInnerHTML
-function escapeHtml(unsafe) {
-  if (typeof unsafe !== 'string') {
-    return '';
-  }
-  return unsafe
-       .replace(/&/g, "&amp;")
-       .replace(/</g, "&lt;")
-       .replace(/>/g, "&gt;")
-       .replace(/"/g, "&quot;")
-       .replace(/'/g, "&#039;");
-}
-
-
 export default function EditPermutationUI() {
   const [defaultDraft, setDefaultDraft] = useState("");
   // 
@@ -149,17 +135,12 @@ export default function EditPermutationUI() {
   const [redoStack, setRedoStack] = useState([]);
   const [graphEdges, setGraphEdges] = useState([]);
   const draftBoxRef = useRef(null);
-
-  // State for the HTML content with highlights
-  const [highlightedHtml, setHighlightedHtml] = useState("");
-
   // 
   const stringDrafts = drafts.map(arr => charArrayToString(arr)); 
   const stringEdges = graphEdges.map(({ from, to }) => ({
     from: from ? charArrayToString(from) : null, 
     to: charArrayToString(to), 
   }));
-  
   // 
   useEffect(() => {
     const handleKey = e => {
@@ -169,54 +150,6 @@ export default function EditPermutationUI() {
     window.addEventListener("keydown", handleKey);
     return () => window.removeEventListener("keydown", handleKey);
   }, [history, redoStack, drafts]); 
-
-  // Effect to update highlighted HTML when currentEditText or selectedDraft changes
-  useEffect(() => {
-    const originalText = charArrayToString(selectedDraft);
-
-    if (!selectedDraft || selectedDraft.length === 0 || currentEditText === originalText) {
-      setHighlightedHtml(escapeHtml(currentEditText).replace(/\n/g, "<br />"));
-      return;
-    }
-
-    let prefixLen = 0;
-    while (
-      prefixLen < originalText.length &&
-      prefixLen < currentEditText.length &&
-      originalText[prefixLen] === currentEditText[prefixLen]
-    ) {
-      prefixLen++;
-    }
-
-    let suffixLen = 0;
-    while (
-      suffixLen < originalText.length - prefixLen &&
-      suffixLen < currentEditText.length - prefixLen &&
-      originalText[originalText.length - 1 - suffixLen] === currentEditText[currentEditText.length - 1 - suffixLen]
-    ) {
-      suffixLen++;
-    }
-
-    const commonPrefix = currentEditText.substring(0, prefixLen);
-    const commonSuffix = currentEditText.substring(currentEditText.length - suffixLen);
-    
-    const oldMiddle = originalText.substring(prefixLen, originalText.length - suffixLen);
-    const newMiddle = currentEditText.substring(prefixLen, currentEditText.length - suffixLen);
-
-    let html = escapeHtml(commonPrefix);
-    if (oldMiddle) {
-      html += `<span style="background-color: rgba(255, 192, 203, 0.5); text-decoration: line-through;">${escapeHtml(oldMiddle)}</span>`; // Light pink for deletions
-    }
-    if (newMiddle) {
-      html += `<span style="background-color: rgba(144, 238, 144, 0.5);">${escapeHtml(newMiddle)}</span>`; // Light green for additions
-    }
-    html += escapeHtml(commonSuffix);
-    
-    setHighlightedHtml(html.replace(/\n/g, "<br />"));
-
-  }, [currentEditText, selectedDraft]);
-
-
   // //
   function saveHistory(newDrafts, newEdges) {
     console.log('[saveHistory] Saving. New drafts count:', newDrafts.length, 'New edges count:', newEdges.length);
@@ -241,10 +174,9 @@ export default function EditPermutationUI() {
     setHistory(h => h.slice(0, -1));
     setDrafts(prev);
     // 
-    const prevSelected = prev[0] || [];
-    setSelectedDraft(prevSelected);
-    setCurrentEditText(charArrayToString(prevSelected)); // This will trigger highlight update
-    console.log('[undo] Undone. prev draft text:', charArrayToString(prevSelected));
+    setSelectedDraft(prev[0] || []);
+    setCurrentEditText(charArrayToString(prev[0] || []));
+    console.log('[undo] Undone. prev draft text:', charArrayToString(prev[0] || []));
   // //
   }
 
@@ -260,11 +192,10 @@ export default function EditPermutationUI() {
     setHistory(h => [...h, drafts]);
     setRedoStack(r => r.slice(1));
     setDrafts(next);
+    setSelectedDraft(next[0] || []);
     // 
-    const nextSelected = next[0] || [];
-    setSelectedDraft(nextSelected);
-    setCurrentEditText(charArrayToString(nextSelected)); // This will trigger highlight update
-    console.log('[redo] Redone. next draft text:', charArrayToString(nextSelected));
+    setCurrentEditText(charArrayToString(next[0] || []));
+    console.log('[redo] Redone. next draft text:', charArrayToString(next[0] || []));
   // //
   }
 
@@ -281,7 +212,7 @@ export default function EditPermutationUI() {
     console.log('[initializeDraft] Initialized char array:', arr.map(c => c.char).join(""));
     setDrafts([arr]);
     setSelectedDraft(arr);
-    setCurrentEditText(defaultDraft); // This will trigger highlight update
+    setCurrentEditText(defaultDraft);
     setGraphEdges([{ from: null, to: arr }]);
     // 
     setHistory([]);
@@ -297,7 +228,6 @@ export default function EditPermutationUI() {
     const newText = currentEditText;  
     console.log('[applyEdit] oldText:', `"${oldText}"`);
     console.log('[applyEdit] newText:', `"${newText}"`);
-    // ... (rest of applyEdit remains the same as your last working version) ...
     // // --- MODIFIED DIFFING LOGIC ---
     let initialPrefixLen = 0;
     const maxPref = Math.min(oldText.length, newText.length);
@@ -758,39 +688,15 @@ export default function EditPermutationUI() {
 
     saveHistory(newDraftsArr, newEdges);
     // 
-    const targetNewDraftForSelection = newEdges.find(edge => edge.from === oldArr)?.to;
-    if (targetNewDraftForSelection) {
-      setSelectedDraft(targetNewDraftForSelection);
-      setCurrentEditText(charArrayToString(targetNewDraftForSelection));
+    if (newEdges.length === 1) { 
+      setSelectedDraft(newEdges[0].to); 
+      setCurrentEditText(charArrayToString(newEdges[0].to));
       // 
-      console.log('[applyEdit] General Path: Selected draft evolved, updated selectedDraft and currentEditText.');
-    } else if (newEdges.length > 0 && !drafts.includes(oldArr)) {
-      // oldArr was deleted, select the first new draft if any, or first overall
-      const newSelection = newDraftsArr.find(d => d === newEdges[0].to) || newDraftsArr[0];
-      if (newSelection) {
-        setSelectedDraft(newSelection);
-        setCurrentEditText(charArrayToString(newSelection));
-      } else { // All drafts might have been deleted if empty
-        setSelectedDraft([]);
-        setCurrentEditText("");
-      }
-       console.log('[applyEdit] General Path: Original selected draft removed or not evolved directly. Selection updated.');
-    }
-     else {
-      // Selected draft was not part of the evolution (e.g. due to conditions) or no new drafts from it
-      // Keep currentEditText reflecting the selectedDraft's actual content if it still exists
-      const currentSelectedDraftStillExists = drafts.find(d => d === selectedDraft);
-      if (currentSelectedDraftStillExists) {
-        setCurrentEditText(charArrayToString(selectedDraft)); // Reset to actual selected content
-      } else if (newDraftsArr.length > 0) { // selectedDraft was deleted, pick first available
-        setSelectedDraft(newDraftsArr[0]);
-        setCurrentEditText(charArrayToString(newDraftsArr[0]));
-      } else { // No drafts left
-        setSelectedDraft([]);
-        setCurrentEditText("");
-      }
+      console.log('[applyEdit] General Path: Single new edge, updated selectedDraft and currentEditText.');
+    } else {
+      setCurrentEditText(charArrayToString(selectedDraft));
       // 
-      console.log('[applyEdit] General Path: Selected draft not directly evolved or no new edges from it. currentEditText reset/updated.');
+      console.log('[applyEdit] General Path: Multiple/no new edges or selected not directly evolved. currentEditText reset to selectedDraft.');
     }
     setConditionParts([]);
     // 
@@ -805,28 +711,9 @@ export default function EditPermutationUI() {
       console.log('[handleSelect] draftBoxRef is null.');
       return;
     }
-
-    // Adjusted selection logic for contentEditable div
-    let start, end, segTextFromSelection;
-    const selection = window.getSelection();
-    if (selection.rangeCount > 0) {
-        const range = selection.getRangeAt(0);
-        if (area.contains(range.commonAncestorContainer)) {
-            const preSelectionRange = range.cloneRange();
-            preSelectionRange.selectNodeContents(area);
-            preSelectionRange.setEnd(range.startContainer, range.startOffset);
-            start = preSelectionRange.toString().length;
-            segTextFromSelection = range.toString();
-            end = start + segTextFromSelection.length;
-        } else {
-            console.log('[handleSelect] Selection is not within the editable area.');
-            return;
-        }
-    } else {
-        console.log('[handleSelect] No selection range found.');
-        return;
-    }
-    
+    const start = area.selectionStart;
+    // 
+    const end = area.selectionEnd;
     console.log('[handleSelect] Selection start:', start, 'end:', end);
     // 
     if (start == null || end == null || start === end) {
@@ -835,74 +722,53 @@ export default function EditPermutationUI() {
       return;
     }
     const multi = window.event.ctrlKey || window.event.metaKey; 
-    const textInEditor = area.textContent || ""; // Use textContent for plain text from div
-    
-    console.log('[handleSelect] multi:', multi, 'textInEditor:', `"${textInEditor}"`);
+    const editedText = currentEditText; 
+    const oldArr = selectedDraft;
+    console.log('[handleSelect] multi:', multi, 'editedText:', `"${editedText}"`);
     // 
-    const oldArr = selectedDraft; // selectedDraft is the CharObj array
-    const oldText = charArrayToString(oldArr); // This is the pristine version of the selected draft
-    
-    // segText is what the user actually selected in the potentially modified (and highlighted) editor
-    // For condition parts, we need to find this segText in the *original* selectedDraft's text (oldText)
-    // because IDs are tied to original characters.
-    const segText = segTextFromSelection; // Text from window.getSelection()
-
-    console.log('[handleSelect] oldText (from selectedDraft char array):', `"${oldText}"`, 'segText (selected in editor):', `"${segText}"`);
+    const oldText = charArrayToString(oldArr); 
+    const segText = editedText.slice(start, end); 
+    console.log('[handleSelect] oldText (from selectedDraft):', `"${oldText}"`, 'segText (selected in textarea):', `"${segText}"`);
     // 
     let segmentIds = [];
+    if (editedText === oldText) { 
+      console.log('[handleSelect] editedText matches oldText. Slicing IDs from oldArr directly.');
+      // 
+      segmentIds = oldArr.slice(start, end).map(c => c.id);
+    } else {
+      console.log('[handleSelect] editedText differs from oldText. Finding segment in oldText.');
+      // 
+      const indices = [];
+      let idx = oldText.indexOf(segText);
 
-    // We need to find the selected `segText` within `oldText` (the original version string)
-    // The `start` and `end` from contentEditable div might not directly map if there were modifications.
-    // A robust way is to search for `segText` in `oldText`.
-    // If `currentEditText` (plain text of editor) is same as `oldText`, `start` is reliable for `oldText`.
-    if (currentEditText === oldText) {
-        console.log('[handleSelect] Editor content matches oldText. Slicing IDs from oldArr directly using selection offsets.');
-        // Check if start and end are within bounds of oldArr
-        if (start < oldArr.length && end <= oldArr.length) {
-             segmentIds = oldArr.slice(start, end).map(c => c.id);
-        } else {
-            console.warn('[handleSelect] Selection offsets out of bounds for oldArr even when text matches.');
+      while (idx !== -1) {
+        indices.push(idx);
+        // 
+        idx = oldText.indexOf(segText, idx + 1);
+      }
+      console.log('[handleSelect] Found occurrences of segText in oldText at indices:', indices);
+      // 
+      if (indices.length === 0) {
+        console.log('[handleSelect] segText not found in oldText. Cannot create condition part.');
+        // 
+        return;
+      }
+      let bestIdx = indices[0];
+      let bestDiff = Math.abs(start - bestIdx);
+      // 
+      for (let i = 1; i < indices.length; i++) {
+        const diff = Math.abs(start - indices[i]);
+        // 
+        if (diff < bestDiff) {
+          bestDiff = diff;
+          bestIdx = indices[i];
+        // 
         }
+      }
+      console.log('[handleSelect] Best match index in oldText:', bestIdx, 'with diff:', bestDiff);
+      // 
+      segmentIds = oldArr.slice(bestIdx, bestIdx + segText.length).map(c => c.id);
     }
-    
-    if (!segmentIds.length || currentEditText !== oldText) { // Fallback or if text differs
-        console.log('[handleSelect] Editor content differs or initial ID slice failed. Finding segment in oldText via search.');
-        // 
-        const indices = [];
-        let idx = oldText.indexOf(segText);
-
-        while (idx !== -1) {
-            indices.push(idx);
-            // 
-            idx = oldText.indexOf(segText, idx + 1);
-        }
-        console.log('[handleSelect] Found occurrences of segText in oldText at indices:', indices);
-        // 
-        if (indices.length === 0) {
-            console.log('[handleSelect] segText not found in oldText. Cannot create condition part.');
-            // 
-            return;
-        }
-        // Heuristic: pick the occurrence in oldText closest to where the selection happened in currentEditText
-        let bestIdx = indices[0];
-        if (indices.length > 1) {
-            let bestDiff = Math.abs(start - bestIdx); // 'start' is from currentEditText selection
-            // 
-            for (let i = 1; i < indices.length; i++) {
-                const diff = Math.abs(start - indices[i]);
-                // 
-                if (diff < bestDiff) {
-                bestDiff = diff;
-                bestIdx = indices[i];
-                // 
-                }
-            }
-        }
-        console.log('[handleSelect] Best match index in oldText:', bestIdx);
-        // 
-        segmentIds = oldArr.slice(bestIdx, bestIdx + segText.length).map(c => c.id);
-    }
-
     if (!segmentIds.length) {
       console.log('[handleSelect] No segmentIds generated.');
       // 
@@ -917,22 +783,9 @@ export default function EditPermutationUI() {
       console.log('[handleSelect] Updated conditionParts:', newParts);
       return newParts;
     });
-    
     // 
-    // For contentEditable, managing selection after update is complex; often best to let it be.
-    // area.setSelectionRange(end, end); // This is for textarea, not directly for contentEditable
-    // To restore selection after DOM update is tricky. For now, we might lose precise selection.
-    // A simple focus might be enough:
-    // area.focus(); 
-    // Or try to place cursor at end of selection
-    if (selection.rangeCount > 0) {
-        const range = selection.getRangeAt(0);
-        range.collapse(false); // collapse to the end of the selection
-        selection.removeAllRanges();
-        selection.addRange(range);
-    }
-}
-
+    area.setSelectionRange(end, end); 
+  }
 
   const getConditionDisplayText = () => {
     if (!conditionParts.length) { 
@@ -975,7 +828,6 @@ export default function EditPermutationUI() {
   // 
   return (
     <div className="p-4 space-y-6 text-gray-800">
-      {/* 1- Title Change */}
       <h1 className="text-2xl font-bold">Welcome to Parallax</h1>
 
       <div className="space-y-2">
@@ -989,6 +841,9 @@ export default function EditPermutationUI() {
         <button 
           onClick={initializeDraft} 
           className="bg-green-600 text-white px-4 py-2 rounded"
+        // 
+        // px-4 
+        // py-2 rounded"> // This was split, ensure button tag is closed correctly
         > 
           Set Initial Draft
         </button>
@@ -998,12 +853,14 @@ export default function EditPermutationUI() {
         <>
           <div>
             <h2 className="text-xl font-semibold">All Drafts:</h2>
+            {/* --- NEW BUTTON: Download drafts --- */}
             <button
               onClick={saveAllDraftsToFile}
               className="my-2 bg-purple-600 text-white px-4 py-2 rounded hover:bg-purple-700"
             >
               Download All Drafts
             </button>
+            {/* --- END NEW BUTTON --- */}
             <ul className="flex flex-wrap gap-2">
               {/* */}
               {stringDrafts.map((text, i) => ( 
@@ -1013,8 +870,7 @@ export default function EditPermutationUI() {
                     console.log(`[DraftClick] Selecting draft index ${i}: "${text}"`);
                     setSelectedDraft(drafts[i]);
                     // 
-                    setCurrentEditText(text); 
-                    setConditionParts([]); 
+                    setCurrentEditText(text); setConditionParts([]); 
                   }}  
                   className={`px-2 py-1 rounded cursor-pointer ${drafts[i] === selectedDraft ?
                     // 
@@ -1029,22 +885,15 @@ export default function EditPermutationUI() {
           <div>
             {/* //  */}
             <h2 className="text-xl font-semibold">Selected Draft:</h2>
-            {/* 2- Highlight Differences: Replaced textarea with contentEditable div */}
-            <div
-              ref={draftBoxRef}
-              onMouseUp={handleSelect}
-              onInput={e => {
-                // IMPORTANT: This updates currentEditText on every input.
-                // The useEffect for highlighting will then re-render this div.
-                // This can lead to cursor jumps. A more sophisticated solution
-                // would be needed for a seamless editing experience.
-                setCurrentEditText(e.currentTarget.textContent || ""); // Use textContent to get plain text
-              }}
-              contentEditable={true}
-              dangerouslySetInnerHTML={{ __html: highlightedHtml }}
-              className="w-full p-2 border rounded whitespace-pre-wrap min-h-[80px] bg-white"
-              style={{ fontFamily: "monospace" }} // Monospace helps with visual alignment of diffs
-              suppressContentEditableWarning={true} 
+            <textarea
+              ref={draftBoxRef} 
+              onMouseUp={handleSelect} 
+              value={currentEditText} 
+              onChange={e => {
+                // 
+                setCurrentEditText(e.target.value);
+              }} 
+              className="w-full p-2 border rounded whitespace-pre-wrap min-h-[80px]"
             />
       
             <div className="mt-2">Conditions: {getConditionDisplayText()}</div>
@@ -1064,7 +913,7 @@ export default function EditPermutationUI() {
               console.log(`[VersionGraph onNodeClick] Clicked node with text: "${text}", found at index: ${idx}`);
               if (idx >= 0) { 
                 setSelectedDraft(drafts[idx]); 
-                setCurrentEditText(text); // This will trigger highlight update
+                setCurrentEditText(text);
               // 
               } 
             }} />  
