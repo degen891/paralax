@@ -181,23 +181,80 @@ setHistory([]);
     console.log('--- [applyEdit] Start ---');
     const oldArr = selectedDraft;
 const oldText = charArrayToString(oldArr); 
-const newText = currentEditText;  
+    const newText = currentEditText;  
     console.log('[applyEdit] oldText:', `"${oldText}"`);
     console.log('[applyEdit] newText:', `"${newText}"`);
 
-    let prefixLen = 0;
+    // --- MODIFIED DIFFING LOGIC ---
+    let initialPrefixLen = 0;
     const maxPref = Math.min(oldText.length, newText.length);
-while (prefixLen < maxPref && oldText[prefixLen] === newText[prefixLen]) prefixLen++; 
-    let suffixLen = 0;
-while (
-      suffixLen < oldText.length - prefixLen &&
-      suffixLen < newText.length - prefixLen &&
-      oldText[oldText.length - 1 - suffixLen] === newText[newText.length - 1 - suffixLen]
-    ) suffixLen++;
-    console.log('[applyEdit] Diffing: prefixLen:', prefixLen, 'suffixLen:', suffixLen);
-const removedLen = oldText.length - prefixLen - suffixLen;
+    while (initialPrefixLen < maxPref && oldText[initialPrefixLen] === newText[initialPrefixLen]) {
+        initialPrefixLen++;
+    }
+
+    let initialSuffixLen = 0;
+    // Calculate suffix based on strings *after* the initial prefix
+    // The loop bounds should use the lengths of the remaining parts of the original strings
+    let olFull = oldText.length;
+    let nlFull = newText.length;
+    while (initialSuffixLen < Math.min(olFull - initialPrefixLen, nlFull - initialPrefixLen) &&
+           oldText[olFull - 1 - initialSuffixLen] === newText[nlFull - 1 - initialSuffixLen]) {
+        initialSuffixLen++;
+    }
     
-    // --- BEGIN DETAILED LOGS for baseInsertedText (from previous debugging step) ---
+    let prefixLen = initialPrefixLen;
+    let suffixLen = initialSuffixLen;
+
+    console.log('[applyEdit] Diffing (Initial): initialPrefixLen:', initialPrefixLen, 'initialSuffixLen:', initialSuffixLen);
+    const baseWithInitialAffixes = newText.slice(initialPrefixLen, newText.length - initialSuffixLen);
+    console.log('[applyEdit] Diffing (Initial): baseWithInitialAffixes:', `"${baseWithInitialAffixes}"`);
+
+    if (initialPrefixLen > 0 && 
+        oldText.charAt(initialPrefixLen - 1) === ' ' && 
+        newText.charAt(initialPrefixLen - 1) === ' ') {
+        
+        console.log('[applyEdit] Diffing Heuristic: Initial prefix ends on a common space. Checking shorter prefix.');
+        const shorterPrefixLen = initialPrefixLen - 1;
+        
+        let shorterSuffixLen = 0;
+        // Suffix calculation needs to be on the original strings with the shorterPrefixLen
+        while (shorterSuffixLen < Math.min(olFull - shorterPrefixLen, nlFull - shorterPrefixLen) &&
+               oldText[olFull - 1 - shorterSuffixLen] === newText[nlFull - 1 - shorterSuffixLen]) {
+            shorterSuffixLen++;
+        }
+        
+        const baseWithShorterPrefix = newText.slice(shorterPrefixLen, newText.length - shorterSuffixLen);
+        console.log('[applyEdit] Diffing Heuristic: Shorter prefix candidate:', shorterPrefixLen, 'Shorter suffix candidate:', shorterSuffixLen);
+        console.log('[applyEdit] Diffing Heuristic: baseWithShorterPrefix:', `"${baseWithShorterPrefix}"`);
+
+        const originalBaseHadLeadingSpace = baseWithInitialAffixes.length > 0 && baseWithInitialAffixes.charAt(0) === ' ';
+        const shorterBaseHasLeadingSpace = baseWithShorterPrefix.length > 0 && baseWithShorterPrefix.charAt(0) === ' ';
+
+        if (shorterBaseHasLeadingSpace && !originalBaseHadLeadingSpace) {
+            console.log("[applyEdit] Diffing Heuristic: Shorter prefix chosen because it makes baseInsertedText start with a space.");
+            prefixLen = shorterPrefixLen;
+            suffixLen = shorterSuffixLen;
+        } 
+        else if (shorterBaseHasLeadingSpace && originalBaseHadLeadingSpace && baseWithShorterPrefix.length > baseWithInitialAffixes.length) {
+            console.log("[applyEdit] Diffing Heuristic: Shorter prefix chosen because it yields a longer space-prefixed baseInsertedText.");
+            prefixLen = shorterPrefixLen;
+            suffixLen = shorterSuffixLen;
+        }
+        // Specific heuristic for the "c. " vs " c." case (transposed space)
+        else if (baseWithShorterPrefix.length > 1 && shorterBaseHasLeadingSpace && !baseWithShorterPrefix.endsWith(' ') &&
+                 baseWithInitialAffixes.length > 1 && !originalBaseHadLeadingSpace && baseWithInitialAffixes.endsWith(' ')) {
+            if (baseWithShorterPrefix.trim() === baseWithInitialAffixes.trim()) {
+                 console.warn("[applyEdit] Diffing Heuristic: Correcting 'transposed space' by preferring shorter prefix (e.g., ' c.' over 'c. ').");
+                 prefixLen = shorterPrefixLen;
+                 suffixLen = shorterSuffixLen;
+            }
+        }
+    }
+    // --- END MODIFIED DIFFING LOGIC ---
+
+    console.log('[applyEdit] Diffing (Final): prefixLen:', prefixLen, 'suffixLen:', suffixLen);
+    
+    // --- DETAILED LOGS for baseInsertedText (from previous debugging step) ---
     console.log(`[applyEdit] DEBUG: newText for slice: "${newText}" (length: ${newText.length})`);
     console.log(`[applyEdit] DEBUG: prefixLen for slice: ${prefixLen}`);
     let endIndexForSlice = newText.length - suffixLen;
@@ -217,10 +274,10 @@ const removedLen = oldText.length - prefixLen - suffixLen;
     // --- END DETAILED LOGS ---
 
     const baseInsertedText = newText.slice(prefixLen, newText.length - suffixLen);
-    // Note: The workaround for "a. b." -> "c. " directly modifying baseInsertedText has been removed 
-    // in favor of the more general fix below for space handling.
+    const removedLen = oldText.length - prefixLen - suffixLen; 
     console.log('[applyEdit] Diffing: removedLen:', removedLen, 'baseInsertedText:', `"${baseInsertedText}"`);
-const isReplacement = removedLen > 0 && baseInsertedText.length > 0;
+    
+    const isReplacement = removedLen > 0 && baseInsertedText.length > 0;
     const isSentenceAddition = removedLen === 0 && /^[^.?!;:]+[.?!;:]$/.test(baseInsertedText.trim());
     console.log('[applyEdit] Type check: isReplacement:', isReplacement, 'isSentenceAddition:', isSentenceAddition);
     console.log('[applyEdit] baseInsertedText.trim() for sentence check:', `"${baseInsertedText.trim()}"`, 'Regex test result:', /^[^.?!;:]+[.?!;:]$/.test(baseInsertedText.trim()));
@@ -228,7 +285,7 @@ const isReplacement = removedLen > 0 && baseInsertedText.length > 0;
 
 if (isSentenceAddition) {
       console.log('[applyEdit] --- Sentence Addition Path ---');
-      const uniquePrecedingContextIds = [...new Set(oldArr.slice(0, prefixLen).map(c => c.id))];
+      const uniquePrecedingContextIds = [...new Set(oldArr.slice(0, prefixLen).map(c => c.id))]; // Use final prefixLen
       console.log('[applyEdit] Sentence Addition: uniquePrecedingContextIds:', uniquePrecedingContextIds);
 
       const newDrafts = [...drafts];
@@ -272,8 +329,7 @@ drafts.forEach((dArr, draftIndex) => {
         }
         console.log(`[applyEdit] Sentence Addition: Draft ${draftIndex}: final anchorIdIndexInDArr = ${anchorIdIndexInDArr}.`);
 
-
-        let insertionPointInDArr; // This will be the 'rawInsertionPoint' before adjustment
+        let insertionPointInDArr; 
 
         if (anchorIdIndexInDArr === -2) { 
           insertionPointInDArr = 0;
@@ -349,7 +405,7 @@ anchorIdIndexInDArr + 1 : targetDraftText.length;
           }
         } 
         
-        // --- BEGIN UNIVERSAL FIX for space handling ---
+        // --- UNIVERSAL FIX for space handling during reassembly (from previous turn) ---
         let finalInsertionPoint = insertionPointInDArr; 
 
         console.log(`[applyEdit] Sentence Addition: Draft ${draftIndex}: insertionPointInDArr before space adjustment logic = ${insertionPointInDArr}`);
@@ -371,11 +427,9 @@ anchorIdIndexInDArr + 1 : targetDraftText.length;
 
         const before = dArr.slice(0, finalInsertionPoint);
         const after = dArr.slice(finalInsertionPoint);
-        // --- END UNIVERSAL FIX for space handling ---
+        // --- END UNIVERSAL FIX for space handling during reassembly ---
 
         const insArr = masterInsArr; 
-// const before = dArr.slice(0, insertionPointInDArr); // Replaced by fix block
-        // const after = dArr.slice(insertionPointInDArr); // Replaced by fix block
         console.log(`[applyEdit] Sentence Addition: Draft ${draftIndex}: before text: "${charArrayToString(before)}"`);
         console.log(`[applyEdit] Sentence Addition: Draft ${draftIndex}: insArr text: "${charArrayToString(insArr)}"`);
         console.log(`[applyEdit] Sentence Addition: Draft ${draftIndex}: after text: "${charArrayToString(after)}"`);
@@ -411,8 +465,8 @@ if (matched) {
 } 
 
     // --- General Replacement/Insertion Path ---
-    // (This path remains unchanged from the version with detailed logs)
     console.log('[applyEdit] --- General Path (Not Sentence Addition) ---');
+    // Ensure prefixLen and removedLen are used from the potentially adjusted diff calculation
     const autoSpecs = getAutoConditions(oldArr, prefixLen, removedLen); 
     console.log('[applyEdit] General Path: autoSpecs:', autoSpecs);
     const newDraftsArr = [...drafts]; 
@@ -429,7 +483,15 @@ const idArr = dArr.map(c => c.id);
       }
 if (isReplacement) { 
         console.log(`[applyEdit] General Path: Replacement case for draft "${currentDraftTextForLog}"`);
-        const { segmentIds } = autoSpecs[0]; 
+        // Use the first autoSpec, assuming it corresponds to the primary replacement
+        // Also, ensure removedLen for slicing 'after' is from the overall diff,
+        // but segmentIds for 'pos' should be from the spec if it's more precise.
+        const specForReplacement = autoSpecs.find(s => findSegmentIndex(idArr, s.segmentIds) !== -1) || autoSpecs[0];
+        if (!specForReplacement) {
+            console.log(`[applyEdit] General Path: No suitable autoSpec found for replacement in draft "${currentDraftTextForLog}". Skipping.`);
+            continue;
+        }
+        const { segmentIds } = specForReplacement; 
         console.log(`[applyEdit] General Path: Replacement autoSpec segmentIds:`, segmentIds);
 const pos = findSegmentIndex(idArr, segmentIds); 
         console.log(`[applyEdit] General Path: Replacement pos: ${pos}`);
@@ -437,13 +499,19 @@ const pos = findSegmentIndex(idArr, segmentIds);
           console.log(`[applyEdit] General Path: Replacement segment not found in draft "${currentDraftTextForLog}". Skipping.`);
           continue;
         }
+        // For replacement, removedLen should be the length of the segment being replaced in this specific draft
+        const currentRemovedLen = segmentIds.length; // More accurate for this specific replacement
         const before = dArr.slice(0, pos);
-const after = dArr.slice(pos + removedLen); 
-        const insArr = Array.from(baseInsertedText).map(ch => ({ id: generateCharId(), char: ch }));
+const after = dArr.slice(pos + currentRemovedLen); 
+        const insArr = Array.from(baseInsertedText).map(ch => ({ id: generateCharId(), char: ch })); // baseInsertedText is from overall diff
         console.log(`[applyEdit] General Path: Replacement before: "${charArrayToString(before)}", insArr: "${charArrayToString(insArr)}", after: "${charArrayToString(after)}"`);
 updated = [...before, ...insArr, ...after];
       } else { 
         console.log(`[applyEdit] General Path: Insert/Delete case for draft "${currentDraftTextForLog}"`);
+        // removedLen from the overall diff applies if it's a pure deletion (baseInsertedText is empty)
+        // For pure insertions, removedLen is 0.
+        const currentOpRemovedLen = baseInsertedText.length === 0 ? removedLen : 0;
+
         for (let spec of autoSpecs) { 
           console.log(`[applyEdit] General Path: Applying spec:`, spec);
           const pos = findSegmentIndex(idArr, spec.segmentIds);
@@ -453,11 +521,12 @@ if (pos < 0) {
             continue;
           }
           if (spec.type === 'remove') { 
-            console.log(`[applyEdit] General Path: Removing segment at pos ${pos}, length ${removedLen}`);
-            let actualRemovedLength = spec.segmentIds.length; 
-            updated = [...updated.slice(0, pos), ...updated.slice(pos + actualRemovedLength)];
+            // This 'remove' spec comes from getAutoConditions where removedLen (overall) > 0
+            // The segment to remove is defined by spec.segmentIds
+            console.log(`[applyEdit] General Path: Removing segment at pos ${pos}, length ${spec.segmentIds.length}`);
+            updated = [...updated.slice(0, pos), ...updated.slice(pos + spec.segmentIds.length)];
             console.log(`[applyEdit] General Path: After removal: "${charArrayToString(updated)}"`);
-} else { 
+} else { // spec.type === 'insert'
             const insArr = Array.from(baseInsertedText).map(ch => ({ id: generateCharId(), char: ch }));
 const insPos = pos + spec.relOffset; 
             console.log(`[applyEdit] General Path: Inserting at insPos ${insPos} (pos ${pos} + relOffset ${spec.relOffset}). insArr: "${charArrayToString(insArr)}"`);
