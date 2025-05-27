@@ -295,9 +295,8 @@ console.log('[applyEdit] Diffing Heuristic: baseWithShorterPrefix:', `"${baseWit
         else if (baseWithShorterPrefix.length > 1 && shorterBaseHasLeadingSpace && !baseWithShorterPrefix.endsWith(' ') &&
                  baseWithInitialAffixes.length > 1 && !originalBaseHadLeadingSpace && baseWithInitialAffixes.endsWith(' ')) {
             if (baseWithShorterPrefix.trim() === baseWithInitialAffixes.trim()) {
-                 console.warn("[applyEdit] Diffing Heuristic: Correcting 'transposed space' by preferring shorter prefix (e.g., ' 
-c.' over 'c. ').");
-                 // 
+                 console.warn("[applyEdit] Diffing Heuristic: Correcting 'transposed space' by preferring shorter prefix (e.g., ' c.' over 'c. ')."); // CORRECTED LINE
+// 
                  prefixLen = shorterPrefixLen;
 suffixLen = shorterSuffixLen;
             }
@@ -339,10 +338,10 @@ suffixLen = shorterSuffixLen;
     console.log('[applyEdit] Diffing: removedLen:', removedLen, 'baseInsertedText:', `"${baseInsertedText}"`);
 // 
     const isReplacement = removedLen > 0 && baseInsertedText.length > 0;
-    const isSentenceAddition = removedLen === 0 && baseInsertedText.trim().length > 0 && /[.?!;:]$/.test(baseInsertedText.trim()); // MODIFIED LINE [cite: 90]
+const isSentenceAddition = removedLen === 0 && baseInsertedText.trim().length > 0 && /[.?!;:]$/.test(baseInsertedText.trim()); // MODIFIED LINE (originally source 90)
     // 
     console.log('[applyEdit] Type check: isReplacement:', isReplacement, 'isSentenceAddition:', isSentenceAddition);
-console.log('[applyEdit] baseInsertedText.trim() for sentence check:', `"${baseInsertedText.trim()}"`, 'Regex test result:', /^[^.?!;:]+[.?!;:]$/.test(baseInsertedText.trim())); // This log line's regex test result will now differ from isSentenceAddition's logic for multi-sentence inputs
+console.log('[applyEdit] baseInsertedText.trim() for sentence check:', `"${baseInsertedText.trim()}"`, 'Regex test result:', /^[^.?!;:]+[.?!;:]$/.test(baseInsertedText.trim()));
 // 
     if (isSentenceAddition) {
       console.log('[applyEdit] --- Sentence Addition Path ---');
