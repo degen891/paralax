@@ -336,9 +336,8 @@ export default function EditPermutationUI() {
     // 
     const removedLen = oldText.length - prefixLen - suffixLen; 
     console.log('[applyEdit] Diffing: removedLen:', removedLen, 'baseInsertedText:', `"${baseInsertedText}"`);
-    // 
-    const isReplacement = removedLen > 0 && baseInsertedText.length > 0;
-    const isSentenceAddition = removedLen === 0 && /^[^.?!;:]+[.?!;:]$/.test(baseInsertedText.trim());
+    // const isReplacement = removedLen > 0 && baseInsertedText.length > 0; // [cite: 90]
+    const isSentenceAddition = removedLen === 0 && baseInsertedText.trim().length > 0 && /[.?!;:]$/.test(baseInsertedText.trim());
     // 
     console.log('[applyEdit] Type check: isReplacement:', isReplacement, 'isSentenceAddition:', isSentenceAddition);
     console.log('[applyEdit] baseInsertedText.trim() for sentence check:', `"${baseInsertedText.trim()}"`, 'Regex test result:', /^[^.?!;:]+[.?!;:]$/.test(baseInsertedText.trim()));
