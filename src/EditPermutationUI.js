@@ -34,16 +34,16 @@ function findSegmentIndex(idArr, segmentIds) {
       if (idArr[i + j] !== segmentIds[j]) {
         match = false;
         break;
-      } // Closes if
-    } // Closes inner for j
+      }
+    }
     if (match) {
       // console.log('[findSegmentIndex] Match found at index:', i);
       return i;
     }
-  } // Closes outer for i
+  }
   // console.log('[findSegmentIndex] No match found, returning -1');
   return -1;
-} // Closes function findSegmentIndex
+}
 
 // Check if sequence exists in ID array
 function idSeqExists(idArr, seq) {
@@ -62,7 +62,6 @@ function getAutoConditions(arr, offset, removedLen) {
     console.log('[getAutoConditions] Removal case. segmentIds:', segmentIds);
     return [{ type: 'remove', segmentIds }];
   }
-  // Insertion case
   const beforePara = text.lastIndexOf("\n", offset - 1);
   const afterPara = text.indexOf("\n", offset);
   console.log('[getAutoConditions] Insertion case. beforePara:', beforePara, 'afterPara:', afterPara);
@@ -72,7 +71,6 @@ function getAutoConditions(arr, offset, removedLen) {
   const paragraph = text.slice(paraStart, paraEnd);
   console.log('[getAutoConditions] paragraph:', `"${paragraph}"`);
   const sentenceRegex = /[^.?!;:]+[.?!;:]/g;
-  // This regex is for getAutoConditions, not the one in applyEdit's isSentenceAddition block
   let match;
   while ((match = sentenceRegex.exec(paragraph)) !== null) {
     const sentenceText = match[0];
@@ -89,12 +87,70 @@ function getAutoConditions(arr, offset, removedLen) {
       return [{ type: 'insert', segmentIds, relOffset }];
     }
   }
-  // Fallback to paragraph if no sentence match for offset
   const segIds = arr.slice(paraStart, paraEnd).map(c => c.id);
   const relOffset = offset - paraStart;
   console.log('[getAutoConditions] Fallback to paragraph. segmentIds:', segIds, 'relOffset:', relOffset);
   return [{ type: 'insert', segmentIds: segIds, relOffset }];
 }
+
+// NEW function to parse the uploaded drafts file
+function parseDraftsFile(fileContent) {
+    const newParsedDrafts = [];
+    let maxIdNumber = -1;
+
+    const draftSections = fileContent.split("--- DRAFT ");
+    draftSections.forEach(section => {
+        if (!section.trim() || !/^\d+ ---/.test(section)) return; // Skip empty or non-draft sections
+
+        const lines = section.split('\n');
+        let readingCharDetails = false;
+        const currentDraftCharObjs = [];
+
+        for (const line of lines) {
+            if (line.startsWith("Character Details:")) {
+                readingCharDetails = true;
+                // The actual details are expected on the *next* non-empty line typically
+                continue; 
+            }
+
+            if (readingCharDetails && line.trim().length > 0) {
+                const parts = line.trim().split(/,\s*/); // Split by comma and optional space
+                for (const part of parts) {
+                    const match = part.match(/'(.*?)'\(([^)]+)\)/);
+                    if (match) {
+                        let char = match[1];
+                        const id = match[2];
+
+                        if (char === '\\n') char = '\n';
+                        else if (char === '\\t') char = '\t';
+                        else if (char === '\\r') char = '\r';
+                        // Add more unescapes if needed e.g. for '\\' or '\''
+                        
+                        currentDraftCharObjs.push({ id, char });
+
+                        if (id.startsWith("char-")) {
+                            const idNum = parseInt(id.substring(5), 10);
+                            if (!isNaN(idNum) && idNum > maxIdNumber) {
+                                maxIdNumber = idNum;
+                            }
+                        }
+                    }
+                }
+                // Assuming character details for a draft are on one (potentially wrapped) line after the header.
+                readingCharDetails = false; 
+            }
+        }
+        if (currentDraftCharObjs.length > 0) {
+            newParsedDrafts.push(currentDraftCharObjs);
+        }
+    });
+    
+    if (newParsedDrafts.length === 0 && fileContent.trim().length > 0) {
+        throw new Error("No valid draft character details found in file. Ensure format is correct.");
+    }
+    return { drafts: newParsedDrafts, maxId: maxIdNumber };
+}
+
 
 export default function EditPermutationUI() {
   const [defaultDraft, setDefaultDraft] = useState("");
@@ -106,6 +162,8 @@ export default function EditPermutationUI() {
   const [redoStack, setRedoStack] = useState([]);
   const [graphEdges, setGraphEdges] = useState([]);
   const draftBoxRef = useRef(null);
+  const fileInputRef = useRef(null); // Ref for the file input
+
   const stringDrafts = drafts.map(arr => charArrayToString(arr));
   const stringEdges = graphEdges.map(({ from, to }) => ({
     from: from ? charArrayToString(from) : null,
@@ -231,7 +289,7 @@ export default function EditPermutationUI() {
         prefixLen = shorterPrefixLen;
         suffixLen = shorterSuffixLen;
       }
-      // case (transposed space) // This was the original problematic line, now correctly a comment.
+      // case (transposed space) 
       else if (baseWithShorterPrefix.length > 1 && shorterBaseHasLeadingSpace && !baseWithShorterPrefix.endsWith(' ') &&
         baseWithInitialAffixes.length > 1 && !originalBaseHadLeadingSpace && baseWithInitialAffixes.endsWith(' ')) {
         if (baseWithShorterPrefix.trim() === baseWithInitialAffixes.trim()) {
@@ -340,7 +398,7 @@ export default function EditPermutationUI() {
           let anchorSegmentText = null;
           let anchorSegmentEndIndex = -1;
           const sentenceBoundaryRegex = /[^.?!;:\n]+(?:[.?!;:\n]|$)|[.?!;:\n]/g;
-          let matchBoundary; 
+          let matchBoundary;
           sentenceBoundaryRegex.lastIndex = 0;
           console.log(`[applyEdit] Sentence Addition: Draft ${draftIndex}: Starting sentence segmentation for effectiveAnchor ${effectiveAnchorForSentenceLookup} in text "${targetDraftText}"`);
           while ((matchBoundary = sentenceBoundaryRegex.exec(targetDraftText)) !== null) {
@@ -476,7 +534,6 @@ export default function EditPermutationUI() {
       } else {
         console.log(`[applyEdit] General Path: Insert/Delete case for draft "${currentDraftTextForLog}"`);
         // const currentOpRemovedLen = baseInsertedText.length === 0 ? removedLen : 0; // This var was unused
-
         for (let spec of autoSpecs) {
           console.log(`[applyEdit] General Path: Applying spec:`, spec);
           const pos = findSegmentIndex(idArr, spec.segmentIds);
@@ -556,10 +613,10 @@ export default function EditPermutationUI() {
             displayChar = '\\r';
         }
         return `'${displayChar}'(${charObj.id})`;
-      }).join(', '); // Join with comma and space
+      }).join(', ');
 
-      fileContent += `${charDetails}\n`; // Add the joined string and a newline
-      fileContent += `\n`; // Blank line between drafts
+      fileContent += `${charDetails}\n`;
+      fileContent += `\n`;
     });
 
     const blob = new Blob([fileContent], { type: 'text/plain;charset=utf-8' });
@@ -576,6 +633,53 @@ export default function EditPermutationUI() {
   }
   // END MODIFIED saveAllDraftsToFile function
   
+  // NEW function to handle file upload
+  function handleFileUpload(event) {
+    const file = event.target.files[0];
+    if (!file) {
+        return;
+    }
+    const reader = new FileReader();
+    reader.onload = (e) => {
+        const content = e.target.result;
+        try {
+            const parsedData = parseDraftsFile(content); 
+            
+            setDrafts(parsedData.drafts);
+            if (parsedData.maxId >= 0) { // Ensure maxId was actually found
+                globalCharCounter = parsedData.maxId + 1;
+            } else {
+                globalCharCounter = 0; // Reset if no IDs were in the file or all were non-standard
+            }
+
+
+            setHistory([]);
+            setRedoStack([]);
+            if (parsedData.drafts.length > 0) {
+                setSelectedDraft(parsedData.drafts[0]);
+                setCurrentEditText(charArrayToString(parsedData.drafts[0]));
+            } else {
+                setSelectedDraft([]);
+                setCurrentEditText("");
+            }
+            setConditionParts([]);
+            const newGraphEdges = parsedData.drafts.map(d => ({ from: null, to: d }));
+            setGraphEdges(newGraphEdges);
+
+            alert("Drafts uploaded successfully!");
+        } catch (error) {
+            console.error("Failed to parse uploaded drafts file:", error);
+            alert(`Failed to parse file: ${error.message}`);
+        }
+        // Reset file input value so onChange fires again for the same file if needed
+        if (fileInputRef.current) {
+             fileInputRef.current.value = null;
+        }
+    };
+    reader.readAsText(file);
+  }
+  // END NEW function to handle file upload
+
   function handleSelect() {
     console.log('[handleSelect] MouseUp event triggered.');
     const area = draftBoxRef.current;
@@ -661,23 +765,46 @@ export default function EditPermutationUI() {
         />
         <button
           onClick={initializeDraft}
-          className="bg-green-600 text-white px-4 py-2 rounded"
+          className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700"
         >
           Set Initial Draft
         </button>
       </div>
+      
+      {/* Upload and Download Buttons Area */}
+      <div className="my-4 flex space-x-2">
+        <div>
+            <input
+                type="file"
+                accept=".txt"
+                style={{ display: 'none' }}
+                ref={fileInputRef}
+                onChange={handleFileUpload}
+            />
+            <button
+                onClick={() => fileInputRef.current && fileInputRef.current.click()}
+                className="bg-sky-600 text-white px-4 py-2 rounded hover:bg-sky-700"
+            >
+                Upload Drafts File
+            </button>
+        </div>
+        {stringDrafts.length > 0 && (
+            <button
+                onClick={saveAllDraftsToFile}
+                className="bg-purple-600 text-white px-4 py-2 rounded hover:bg-purple-700"
+            >
+                Download All Drafts
+            </button>
+        )}
+      </div>
+
 
       {stringDrafts.length > 0 && (
         <>
           <div>
             <h2 className="text-xl font-semibold">All Drafts:</h2>
-            <button
-              onClick={saveAllDraftsToFile}
-              className="my-2 bg-purple-600 text-white px-4 py-2 rounded hover:bg-purple-700"
-            >
-              Download All Drafts
-            </button>
-            <ul className="flex flex-wrap gap-2">
+            {/* Download button moved up, keep ul here if needed or remove if download is primary action here */}
+            <ul className="flex flex-wrap gap-2 mt-2">
               {stringDrafts.map((text, i) => (
                 <li
                   key={i}
@@ -708,9 +835,9 @@ export default function EditPermutationUI() {
             />
             <div className="mt-2">Conditions: {getConditionDisplayText()}</div>
             <div className="flex space-x-2 mt-4">
-              <button onClick={applyEdit} className="bg-blue-600 text-white px-4 py-2 rounded">Submit Edit</button>
-              <button onClick={undo} className="bg-gray-200 px-4 py-2 rounded">Undo</button>
-              <button onClick={redo} className="bg-gray-200 px-4 py-2 rounded">Redo</button>
+              <button onClick={applyEdit} className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700">Submit Edit</button>
+              <button onClick={undo} className="bg-gray-200 px-4 py-2 rounded hover:bg-gray-300">Undo</button>
+              <button onClick={redo} className="bg-gray-200 px-4 py-2 rounded hover:bg-gray-300">Redo</button>
             </div>
           </div>
 
