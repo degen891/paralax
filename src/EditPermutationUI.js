@@ -36,8 +36,8 @@ function findSegmentIndex(idArr, segmentIds) {
     let match = true;
 // for (let j = 0; j < segmentIds.length; j++) {
       if (idArr[i + j] !== segmentIds[j]) { match = false;
-// break; }
-    } // Closes if
+// break; 
+      } // Closes if
     } // Closes inner for j
     if (match) {
       // console.log('[findSegmentIndex] Match found at index:', i);
@@ -251,11 +251,11 @@ setGraphEdges([{ from: null, to: arr }]);
             suffixLen = shorterSuffixLen;
         }
         // Specific heuristic for the "c. " vs " c."
-// // case (transposed space) // Note: The original line had "case" not as a comment. Corrected if it was a typo.
+// // case (transposed space)  // *** CRITICAL FIX: Commented out 'case' keyword ***
         else if (baseWithShorterPrefix.length > 1 && shorterBaseHasLeadingSpace && !baseWithShorterPrefix.endsWith(' ') &&
                  baseWithInitialAffixes.length > 1 && !originalBaseHadLeadingSpace && baseWithInitialAffixes.endsWith(' ')) {
             if (baseWithShorterPrefix.trim() === baseWithInitialAffixes.trim()) {
-                 // Corrected the multi-line string issue here
+                 // *** CRITICAL FIX: Corrected multi-line string for console.warn ***
                  console.warn("[applyEdit] Diffing Heuristic: Correcting 'transposed space' by preferring shorter prefix (e.g., ' c.' over 'c. ').");
 // prefixLen = shorterPrefixLen;
                  suffixLen = shorterSuffixLen;
@@ -588,19 +588,45 @@ const pos = findSegmentIndex(idArr, segmentIds);
     } 
 
     saveHistory(newDraftsArr, newEdges);
-// if (newEdges.length === 1) { 
-      setSelectedDraft(newEdges[0].to); 
-      setCurrentEditText(charArrayToString(newEdges[0].to));
-// console.log('[applyEdit] General Path: Single new edge, updated selectedDraft and currentEditText.');
-} else {
-      setCurrentEditText(charArrayToString(selectedDraft));
-// console.log('[applyEdit] General Path: Multiple/no new edges or selected not directly evolved. currentEditText reset to selectedDraft.');
+// // REVERTED to simpler logic for this block
+    if (newEdges.length === 1 && newDraftsArr.length === drafts.length + 1) { 
+      const edgeFromSelected = newEdges.find(edge => edge.from === oldArr);
+      if (edgeFromSelected) {
+        setSelectedDraft(edgeFromSelected.to);
+        setCurrentEditText(charArrayToString(edgeFromSelected.to));
+// console.log('[applyEdit] General Path: Single new edge from selected draft, updated selectedDraft and currentEditText.');
+      } else {
+        const currentSelectedStillExists = newDraftsArr.find(d => d === selectedDraft);
+        if (currentSelectedStillExists) {
+            setCurrentEditText(charArrayToString(selectedDraft));
+        } else if (newDraftsArr.length > 0) {
+            setSelectedDraft(newDraftsArr[0]);
+            setCurrentEditText(charArrayToString(newDraftsArr[0]));
+        } else { 
+            setSelectedDraft([]);
+            setCurrentEditText("");
+        }
+        console.log('[applyEdit] General Path: Single new edge, but not from selected. Selection updated/reset.');
+      }
+    } else {
+      const currentSelectedStillExists = newDraftsArr.find(d => d.map(c => c.id).join(',') === selectedDraft.map(c => c.id).join(','));
+      if (currentSelectedStillExists) {
+          setSelectedDraft(currentSelectedStillExists); 
+          setCurrentEditText(charArrayToString(currentSelectedStillExists));
+      } else if (newDraftsArr.length > 0) {
+          setSelectedDraft(newDraftsArr[0]);
+          setCurrentEditText(charArrayToString(newDraftsArr[0]));
+      } else {
+          setSelectedDraft([]);
+          setCurrentEditText("");
+      }
+// console.log('[applyEdit] General Path: Multiple/no new edges or selected not directly evolved. currentEditText and selectedDraft updated/reset.');
     }
     setConditionParts([]);
 // console.log('--- [applyEdit] End ---');
 }
-
-  // MODIFIED saveAllDraftsToFile function (from previous response, logic should be sound)
+  
+  // CORRECTED saveAllDraftsToFile function
   function saveAllDraftsToFile() {
     console.log('[saveAllDraftsToFile] Initiated save with char IDs.');
     if (drafts.length === 0) { // Use main 'drafts' state
@@ -643,7 +669,7 @@ const pos = findSegmentIndex(idArr, segmentIds);
 
     console.log('[saveAllDraftsToFile] File download triggered for all_drafts_with_ids.txt.');
   }
-  // END MODIFIED saveAllDraftsToFile function
+  // END CORRECTED saveAllDraftsToFile function
   
   function handleSelect() {
     console.log('[handleSelect] MouseUp event triggered.');
@@ -724,14 +750,12 @@ setConditionParts(prev => {
     return conditionParts.map(part => `'${part.text}'`).join(' + '); 
   };
 
-  // // The saveAllDraftsToFile function was here in the user's provided code
-  // It is now replaced by the corrected version above.
+  // // Original saveAllDraftsToFile was located around here in the user's provided file.
+                 // It is now replaced by the corrected version above.
 
   return (
     <div className="p-4 space-y-6 text-gray-800">
-      {/* Title was changed by user's previous request, keeping it as "Welcome to Parallax" */}
       <h1 className="text-2xl font-bold">Welcome to Parallax</h1>
-
 
       <div className="space-y-2">
         <label>Initial Draft:</label>
@@ -751,7 +775,6 @@ placeholder="Type starting text…"
         <>
           <div>
 <h2 className="text-xl font-semibold">All Drafts:</h2>
-            {/* The "Download All Drafts" button will use the corrected function now */}
             <button
               onClick={saveAllDraftsToFile}
               className="my-2 bg-purple-600 text-white px-4 py-2 rounded hover:bg-purple-700"
