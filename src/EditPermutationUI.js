@@ -46,7 +46,7 @@ function findSegmentIndex(idArr, segmentIds) {
   } // Closes outer for i
   // console.log('[findSegmentIndex] No match found, returning -1');
   return -1;
-// }
+// } // This brace closes the function. The extra one after this was removed.
 }
 
 // Check if sequence exists in ID array
@@ -251,11 +251,11 @@ setGraphEdges([{ from: null, to: arr }]);
             suffixLen = shorterSuffixLen;
         }
         // Specific heuristic for the "c. " vs " c."
-// // case (transposed space)  // *** CRITICAL FIX: Commented out 'case' keyword ***
+// // case (transposed space)  // *** CRITICAL FIX: Ensured 'case' is commented ***
         else if (baseWithShorterPrefix.length > 1 && shorterBaseHasLeadingSpace && !baseWithShorterPrefix.endsWith(' ') &&
                  baseWithInitialAffixes.length > 1 && !originalBaseHadLeadingSpace && baseWithInitialAffixes.endsWith(' ')) {
             if (baseWithShorterPrefix.trim() === baseWithInitialAffixes.trim()) {
-                 // *** CRITICAL FIX: Corrected multi-line string for console.warn ***
+                 // Ensure console.warn string is single line
                  console.warn("[applyEdit] Diffing Heuristic: Correcting 'transposed space' by preferring shorter prefix (e.g., ' c.' over 'c. ').");
 // prefixLen = shorterPrefixLen;
                  suffixLen = shorterSuffixLen;
@@ -640,27 +640,29 @@ const pos = findSegmentIndex(idArr, segmentIds);
     drafts.forEach((draftCharObjArray, index) => { // Iterate over 'drafts'
       fileContent += `--- DRAFT ${index + 1} ---\n`;
       const text = charArrayToString(draftCharObjArray);
+      // Indent multi-line text for clarity in the output file
       const indentedText = text.split('\n').map(line => `      ${line}`).join('\n');
-      fileContent += `Text:\n${indentedText}\n`;
+      fileContent += `Text:\n${indentedText}\n`; // Add newline before indented text if text is not empty
       fileContent += `Character Details:\n`;
       draftCharObjArray.forEach(charObj => {
         let displayChar = charObj.char;
         if (displayChar === '\n') {
-          displayChar = '\\n'; 
+          displayChar = '\\n'; // Show newline as '\n'
         } else if (displayChar === '\t') {
-          displayChar = '\\t'; 
+          displayChar = '\\t'; // Show tab as '\t'
         } else if (displayChar === '\r') {
-            displayChar = '\\r'; 
+            displayChar = '\\r'; // Show carriage return as '\r'
         }
+        // For other non-printable or problematic characters, you might add more replacements
         fileContent += `  '${displayChar}' (id: ${charObj.id})\n`;
       });
-      fileContent += `\n`; 
+      fileContent += `\n`; // Blank line between drafts
     });
 
     const blob = new Blob([fileContent], { type: 'text/plain;charset=utf-8' });
     const link = document.createElement('a');
     link.href = URL.createObjectURL(blob);
-    link.download = 'all_drafts_with_ids.txt'; 
+    link.download = 'all_drafts_with_ids.txt'; // Changed filename
 
     document.body.appendChild(link);
     link.click();
