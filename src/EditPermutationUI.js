@@ -1,4 +1,4 @@
-// import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import VersionGraph from "./VersionGraph";
 // // --- Character ID tracking ---
 let globalCharCounter = 0;
