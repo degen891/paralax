@@ -1,5 +1,5 @@
 // // 
-import React, { useState, useEffect, useRef } from "react"; // ENSURED THIS LINE IS ACTIVE
+import React, { useState, useEffect, useRef } from "react"; 
 import VersionGraph from "./VersionGraph";
 // // // --- Character ID tracking ---
 let globalCharCounter = 0;
@@ -323,9 +323,9 @@ export default function EditPermutationUI() {
         else if (baseWithShorterPrefix.length > 1 && shorterBaseHasLeadingSpace && !baseWithShorterPrefix.endsWith(' ') &&
                  baseWithInitialAffixes.length > 1 && !originalBaseHadLeadingSpace && baseWithInitialAffixes.endsWith(' ')) {
             if (baseWithShorterPrefix.trim() === baseWithInitialAffixes.trim()) {
+                 // 
+                 // FIXED the multi-line string error in console.warn
                  console.warn("[applyEdit] Diffing Heuristic: Correcting 'transposed space' by preferring shorter prefix (e.g., ' c.' over 'c. ').");
-// 
-// 
 // 
                  prefixLen = shorterPrefixLen;
                  suffixLen = shorterSuffixLen;
@@ -763,36 +763,33 @@ targetIdArr.length - 1; i >= 0; i--) {
 
     saveHistory(newDraftsArr, newEdges);
 // // 
-    if (newEdges.length === 1) { 
-      setSelectedDraft(newEdges[0].to); 
-      setCurrentEditText(charArrayToString(newEdges[0].to));
-// // 
-      console.log('[applyEdit] General Path: Single new edge, updated selectedDraft and currentEditText.');
-// 
+    // MODIFIED LOGIC for updating selected draft after applyEdit
+    const oldArrStillExistsInNew = newDraftsArr.find(d => d.map(char => char.id).join(',') === oldArr.map(char => char.id).join(','));
+    const evolvedDraft = newEdges.find(edge => edge.from.map(char => char.id).join(',') === oldArr.map(char => char.id).join(','))?.to;
+
+    if (evolvedDraft) {
+        setSelectedDraft(evolvedDraft);
+        setCurrentEditText(charArrayToString(evolvedDraft));
+        console.log('[applyEdit] General Path: Selected draft evolved. Selection updated to new version.');
+    } else if (oldArrStillExistsInNew) {
+        setSelectedDraft(oldArrStillExistsInNew); // Should be the same object as oldArr if it wasn't changed by an edit to *it*
+        setCurrentEditText(charArrayToString(oldArrStillExistsInNew));
+        console.log('[applyEdit] General Path: Selected draft did not evolve directly (e.g. conditions not met for it), but still exists. Selection remains.');
+    } else if (newDraftsArr.length > 0) {
+        setSelectedDraft(newDraftsArr[0]); // Fallback to the first available draft
+        setCurrentEditText(charArrayToString(newDraftsArr[0]));
+        console.log('[applyEdit] General Path: Selected draft was removed or changed. Selecting first available draft.');
     } else {
-      // If selectedDraft still exists in newDraftsArr, keep it and its text
-      // Otherwise, if new drafts were created, select the first one.
-      // If no drafts left, clear selection.
-      const currentSelectedStillExists = newDraftsArr.find(d => d === selectedDraft);
-      if (currentSelectedStillExists) {
-          setCurrentEditText(charArrayToString(selectedDraft));
-      } else if (newDraftsArr.length > 0) {
-          setSelectedDraft(newDraftsArr[0]);
-          setCurrentEditText(charArrayToString(newDraftsArr[0]));
-      } else {
-          setSelectedDraft([]);
-          setCurrentEditText("");
-      }
-      console.log('[applyEdit] General Path: Multiple/no new edges or selected not directly evolved. currentEditText and selectedDraft updated/reset.');
-// 
+        setSelectedDraft([]); // No drafts left
+        setCurrentEditText("");
+        console.log('[applyEdit] General Path: All drafts removed. Clearing selection.');
     }
     setConditionParts([]);
-    // 
+// // (This line was modified from original source 468 which had different logic)
     console.log('--- [applyEdit] End ---');
-// 
-  }
+}
 
-  // MODIFIED saveAllDraftsToFile function
+  // CORRECTED saveAllDraftsToFile function
   function saveAllDraftsToFile() {
     console.log('[saveAllDraftsToFile] Initiated save with char IDs.');
     if (drafts.length === 0) { // Use main 'drafts' state
@@ -805,8 +802,10 @@ targetIdArr.length - 1; i >= 0; i--) {
 
     drafts.forEach((draftCharObjArray, index) => { // Iterate over 'drafts'
       fileContent += `--- DRAFT ${index + 1} ---\n`;
-      const text = charArrayToString(draftCharObjArray); // Use existing helper
-      fileContent += `Text: ${text.replace(/\n/g, "\n      ")}\n`; // Indent multi-line text for clarity
+      const text = charArrayToString(draftCharObjArray);
+      // Indent multi-line text for clarity in the output file
+      const indentedText = text.split('\n').join('\n      ');
+      fileContent += `Text: ${indentedText}\n`;
       fileContent += `Character Details:\n`;
       draftCharObjArray.forEach(charObj => {
         let displayChar = charObj.char;
@@ -817,9 +816,7 @@ targetIdArr.length - 1; i >= 0; i--) {
         } else if (displayChar === '\r') {
             displayChar = '\\r'; // Show carriage return as '\r'
         }
-        // For other non-printable or problematic characters, you might add more replacements
-        // e.g., displayChar = displayChar.replace(/[^ -~]/g, c => `\\u${c.charCodeAt(0).toString(16).padStart(4, '0')}`);
-
+        // Escape other potentially problematic characters for display if necessary
         fileContent += `  '${displayChar}' (id: ${charObj.id})\n`;
       });
       fileContent += `\n`; // Blank line between drafts
@@ -837,7 +834,7 @@ targetIdArr.length - 1; i >= 0; i--) {
 
     console.log('[saveAllDraftsToFile] File download triggered for all_drafts_with_ids.txt.');
   }
-  // END MODIFIED saveAllDraftsToFile function
+  // END CORRECTED saveAllDraftsToFile function
   
   function handleSelect() {
     console.log('[handleSelect] MouseUp event triggered.');
@@ -940,8 +937,7 @@ targetIdArr.length - 1; i >= 0; i--) {
     }
     return conditionParts.map(part => `'${part.text}'`).join(' + '); 
   };
-// // (Original saveAllDraftsToFile was here, replaced by the one above)
-  // --- END NEW FUNCTION --- // (This comment is now slightly misplaced but harmless)
+// // (Original placeholder for saveAllDraftsToFile function)
 
   // 
   return (
