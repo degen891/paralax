@@ -323,8 +323,7 @@ export default function EditPermutationUI() {
         else if (baseWithShorterPrefix.length > 1 && shorterBaseHasLeadingSpace && !baseWithShorterPrefix.endsWith(' ') &&
                  baseWithInitialAffixes.length > 1 && !originalBaseHadLeadingSpace && baseWithInitialAffixes.endsWith(' ')) {
             if (baseWithShorterPrefix.trim() === baseWithInitialAffixes.trim()) {
-                 // 
-                 // FIXED the multi-line string error in console.warn
+// // FIXED the multi-line string error in console.warn
                  console.warn("[applyEdit] Diffing Heuristic: Correcting 'transposed space' by preferring shorter prefix (e.g., ' c.' over 'c. ').");
 // 
                  prefixLen = shorterPrefixLen;
@@ -762,31 +761,53 @@ targetIdArr.length - 1; i >= 0; i--) {
     } 
 
     saveHistory(newDraftsArr, newEdges);
+// // REVERTED to simpler logic for this block
+    if (newEdges.length === 1 && newDraftsArr.length === drafts.length + 1) { // Check if only one new draft was added from the selected one
+      const edgeFromSelected = newEdges.find(edge => edge.from === oldArr);
+      if (edgeFromSelected) {
+        setSelectedDraft(edgeFromSelected.to);
+        setCurrentEditText(charArrayToString(edgeFromSelected.to));
 // // 
-    // MODIFIED LOGIC for updating selected draft after applyEdit
-    const oldArrStillExistsInNew = newDraftsArr.find(d => d.map(char => char.id).join(',') === oldArr.map(char => char.id).join(','));
-    const evolvedDraft = newEdges.find(edge => edge.from.map(char => char.id).join(',') === oldArr.map(char => char.id).join(','))?.to;
-
-    if (evolvedDraft) {
-        setSelectedDraft(evolvedDraft);
-        setCurrentEditText(charArrayToString(evolvedDraft));
-        console.log('[applyEdit] General Path: Selected draft evolved. Selection updated to new version.');
-    } else if (oldArrStillExistsInNew) {
-        setSelectedDraft(oldArrStillExistsInNew); // Should be the same object as oldArr if it wasn't changed by an edit to *it*
-        setCurrentEditText(charArrayToString(oldArrStillExistsInNew));
-        console.log('[applyEdit] General Path: Selected draft did not evolve directly (e.g. conditions not met for it), but still exists. Selection remains.');
-    } else if (newDraftsArr.length > 0) {
-        setSelectedDraft(newDraftsArr[0]); // Fallback to the first available draft
-        setCurrentEditText(charArrayToString(newDraftsArr[0]));
-        console.log('[applyEdit] General Path: Selected draft was removed or changed. Selecting first available draft.');
+        console.log('[applyEdit] General Path: Single new edge from selected draft, updated selectedDraft and currentEditText.');
+      } else {
+        // If the single new edge isn't from the selected draft, behavior is more complex.
+        // Fallback: keep current selected draft if it still exists, or select first new draft.
+        const currentSelectedStillExists = newDraftsArr.find(d => d === selectedDraft);
+        if (currentSelectedStillExists) {
+            setCurrentEditText(charArrayToString(selectedDraft));
+        } else if (newDraftsArr.length > 0) {
+            setSelectedDraft(newDraftsArr[0]);
+            setCurrentEditText(charArrayToString(newDraftsArr[0]));
+        } else { // Should not happen if newEdges.length === 1
+            setSelectedDraft([]);
+            setCurrentEditText("");
+        }
+        console.log('[applyEdit] General Path: Single new edge, but not from selected. Selection updated/reset.');
+      }
+// 
     } else {
-        setSelectedDraft([]); // No drafts left
-        setCurrentEditText("");
-        console.log('[applyEdit] General Path: All drafts removed. Clearing selection.');
+      // Multiple new edges, or selected draft didn't directly evolve, or drafts were removed.
+      // If selectedDraft still exists in newDraftsArr, keep it and its text
+      // Otherwise, if new drafts were created, select the first one.
+      // If no drafts left, clear selection.
+      const currentSelectedStillExists = newDraftsArr.find(d => d.map(c => c.id).join(',') === selectedDraft.map(c => c.id).join(','));
+      if (currentSelectedStillExists) {
+          setSelectedDraft(currentSelectedStillExists); // Update to the instance from the new array
+          setCurrentEditText(charArrayToString(currentSelectedStillExists));
+      } else if (newDraftsArr.length > 0) {
+          setSelectedDraft(newDraftsArr[0]);
+          setCurrentEditText(charArrayToString(newDraftsArr[0]));
+      } else {
+          setSelectedDraft([]);
+          setCurrentEditText("");
+      }
+// 
+      console.log('[applyEdit] General Path: Multiple/no new edges or selected not directly evolved. currentEditText and selectedDraft updated/reset.');
     }
     setConditionParts([]);
-// // (This line was modified from original source 468 which had different logic)
+    // 
     console.log('--- [applyEdit] End ---');
+// 
 }
 
   // CORRECTED saveAllDraftsToFile function
@@ -804,8 +825,8 @@ targetIdArr.length - 1; i >= 0; i--) {
       fileContent += `--- DRAFT ${index + 1} ---\n`;
       const text = charArrayToString(draftCharObjArray);
       // Indent multi-line text for clarity in the output file
-      const indentedText = text.split('\n').join('\n      ');
-      fileContent += `Text: ${indentedText}\n`;
+      const indentedText = text.split('\n').map(line => `      ${line}`).join('\n'); // Indent each line
+      fileContent += `Text:\n${indentedText}\n`; // Add newline before indented text
       fileContent += `Character Details:\n`;
       draftCharObjArray.forEach(charObj => {
         let displayChar = charObj.char;
@@ -816,7 +837,7 @@ targetIdArr.length - 1; i >= 0; i--) {
         } else if (displayChar === '\r') {
             displayChar = '\\r'; // Show carriage return as '\r'
         }
-        // Escape other potentially problematic characters for display if necessary
+        // For other non-printable or problematic characters, you might add more replacements
         fileContent += `  '${displayChar}' (id: ${charObj.id})\n`;
       });
       fileContent += `\n`; // Blank line between drafts
@@ -937,7 +958,7 @@ targetIdArr.length - 1; i >= 0; i--) {
     }
     return conditionParts.map(part => `'${part.text}'`).join(' + '); 
   };
-// // (Original placeholder for saveAllDraftsToFile function)
+// 
 
   // 
   return (
