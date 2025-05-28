@@ -651,7 +651,7 @@ export default function EditPermutationUI() {
 
   return (
     <div className="p-4 space-y-6 text-gray-800">
-      <h1 className="text-2xl font-bold">Welcome to Parallax</h1>
+      <h1 className="text-2xl font-bold">Welcome to Parallax!</h1>
 
       <div className="space-y-2">
         <label>Initial Draft:</label>
