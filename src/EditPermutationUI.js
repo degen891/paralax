@@ -140,7 +140,7 @@ function getAutoConditions(arr, offset, removedLen) {
 export default function EditPermutationUI() {
   const [defaultDraft, setDefaultDraft] = useState("");
   // 
-  const [drafts, setDrafts] = useState([]); // This holds CharObj arrays
+  const [drafts, setDrafts] = useState([]);
 // 
   const [selectedDraft, setSelectedDraft] = useState([]);
   const [currentEditText, setCurrentEditText] = useState("");
@@ -276,7 +276,7 @@ export default function EditPermutationUI() {
     // 
     console.log('[applyEdit] Diffing (Initial): initialPrefixLen:', initialPrefixLen, 'initialSuffixLen:', initialSuffixLen);
 // 
-    const baseWithInitialAffixes = newText.slice(initialPrefixLen, newText.length - initialSuffixLen);
+    const baseWithInitialAffixes = newText.slice(initialPrefixLen, newText.length - suffixLen);
     console.log('[applyEdit] Diffing (Initial): baseWithInitialAffixes:', `"${baseWithInitialAffixes}"`);
 // // 
     if (initialPrefixLen > 0 && 
@@ -323,12 +323,11 @@ export default function EditPermutationUI() {
         else if (baseWithShorterPrefix.length > 1 && shorterBaseHasLeadingSpace && !baseWithShorterPrefix.endsWith(' ') &&
                  baseWithInitialAffixes.length > 1 && !originalBaseHadLeadingSpace && baseWithInitialAffixes.endsWith(' ')) {
             if (baseWithShorterPrefix.trim() === baseWithInitialAffixes.trim()) {
-                 console.warn("[applyEdit] Diffing Heuristic: Correcting 'transposed space' by preferring shorter prefix (e.g., ' ");
+                 console.warn("[applyEdit] Diffing Heuristic: Correcting 'transposed space' by preferring shorter prefix (e.g., ' c.' over 'c. ').");
 // 
-// c.' over 'c. ')."); // CORRECTED LINE
+// 
 // 
                  prefixLen = shorterPrefixLen;
-// 
                  suffixLen = shorterSuffixLen;
             }
         }
@@ -1013,5 +1012,4 @@ setCurrentEditText(text);
     </div>
   );
 // 
-}
 }
