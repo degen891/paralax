@@ -88,24 +88,20 @@ function getAutoConditions(arr, offset, removedLen) {
   return [{ type: 'insert', segmentIds: segIds, relOffset }];
 }
 
-// REVISED function to parse the uploaded drafts file
+// MODIFIED function to parse the uploaded drafts file with new char detail format
 function parseDraftsFile(fileContent) {
-    console.log("[parseDraftsFile] Starting to parse file content.");
+    console.log("[parseDraftsFile] Starting to parse file content (new format).");
     const newParsedDrafts = [];
     let maxIdNumber = -1;
 
     const draftSections = fileContent.split("--- DRAFT ");
     draftSections.forEach((section, sectionIndex) => {
-        // Skip the content before the first "--- DRAFT " line if file doesn't start with it
         if (sectionIndex === 0 && !fileContent.trimStart().startsWith("--- DRAFT ")) {
-            console.log("[parseDraftsFile] Skipping content before first draft section.");
-            return;
+            return; 
         }
-        // Ensure the section looks like a draft header, e.g., "1 ---"
-        // Also check if the section has meaningful content beyond just the header.
         const sectionTrimmed = section.trimStart();
         if (!sectionTrimmed || !/^\d+\s*---/.test(sectionTrimmed)) {
-            if (section.trim()) { 
+            if (section.trim()) {
                  console.warn(`[parseDraftsFile] Skipping malformed or non-draft section: "${section.substring(0, 50).replace(/\n/g, "\\n")}..."`);
             }
             return;
@@ -127,49 +123,41 @@ function parseDraftsFile(fileContent) {
 
             if (expectCharDetailsNext) {
                 const detailsLine = line.trim(); 
-                if (detailsLine.length > 0) { // Only process if the line isn't empty after trimming
+                if (detailsLine.length > 0) { 
                     console.log("[parseDraftsFile] Parsing character details line:", detailsLine);
-                    const parts = detailsLine.split(/,\s*/); 
+                    // Regex to find individual 'char'(id) parts consecutively
+                    const charDetailRegex = /'((?:\\.|[^'\\])*)'\s*\((char-\d+)\)/g;
+                    let regexMatch;
                     
-                    for (const part of parts) {
-                        if (!part) continue; 
+                    while ((regexMatch = charDetailRegex.exec(detailsLine)) !== null) {
+                        let char = regexMatch[1];
+                        const id = regexMatch[2];
 
-                        const match = part.match(/^'((?:\\.|[^'\\])*)'\s*\((char-\d+)\)$/);
+                        if (char === '\\n') char = '\n';
+                        else if (char === '\\t') char = '\t';
+                        else if (char === '\\r') char = '\r';
+                        else if (char === '\\\\') char = '\\'; 
+                        else if (char === "\\'") char = "'";   
 
-                        if (match) {
-                            let char = match[1];
-                            const id = match[2];
+                        if (char === ',') {
+                            console.log(`[parseDraftsFile] Parsed a COMMA character: char='${char}', id=${id}`);
+                        }
+                        
+                        currentDraftCharObjs.push({ id, char });
 
-                            if (char === '\\n') char = '\n';
-                            else if (char === '\\t') char = '\t';
-                            else if (char === '\\r') char = '\r';
-                            else if (char === '\\\\') char = '\\'; 
-                            else if (char === "\\'") char = "'";   
-
-                            if (char === ',') {
-                                console.log(`[parseDraftsFile] Parsed a COMMA character: char='${char}', id=${id}`);
+                        if (id.startsWith("char-")) {
+                            const idNum = parseInt(id.substring(5), 10);
+                            if (!isNaN(idNum) && idNum > maxIdNumber) {
+                                maxIdNumber = idNum;
                             }
-                            
-                            currentDraftCharObjs.push({ id, char });
-
-                            if (id.startsWith("char-")) {
-                                const idNum = parseInt(id.substring(5), 10);
-                                if (!isNaN(idNum) && idNum > maxIdNumber) {
-                                    maxIdNumber = idNum;
-                                }
-                            }
-                        } else {
-                            console.warn(`[parseDraftsFile] Could not parse character detail part: "${part}" from line "${detailsLine}"`);
                         }
                     }
                 }
-                expectCharDetailsNext = false; // Processed the line after "Character Details:", reset flag
+                expectCharDetailsNext = false; 
             }
         } 
         
         if (charDetailsHeaderFound) { 
-            // Add the draft (even if empty) if its header was found.
-            // This handles empty drafts that are intentionally saved.
             newParsedDrafts.push(currentDraftCharObjs);
             if (currentDraftCharObjs.length > 0) {
                 console.log(`[parseDraftsFile] Added draft with ${currentDraftCharObjs.length} characters.`);
@@ -603,6 +591,7 @@ export default function EditPermutationUI() {
     console.log('--- [applyEdit] End ---');
   }
 
+  // Function to save all drafts with character IDs
   function saveAllDraftsToFile() {
     console.log('[saveAllDraftsToFile] Initiated save with char IDs.');
     if (drafts.length === 0) {
@@ -618,8 +607,9 @@ export default function EditPermutationUI() {
       const text = charArrayToString(draftCharObjArray);
       const indentedText = text.split('\n').map(line => `      ${line}`).join('\n');
       fileContent += `Text:\n${indentedText}\n`;
-      fileContent += `Character Details:\n  `;
+      fileContent += `Character Details:\n  `; // Start the line for char details with an indent
       
+      // MODIFIED: Join without commas
       const charDetails = draftCharObjArray.map(charObj => {
         let displayChar = charObj.char;
         if (displayChar === '\n') {
@@ -629,8 +619,16 @@ export default function EditPermutationUI() {
         } else if (displayChar === '\r') {
             displayChar = '\\r';
         }
+        // Escape single quotes if char is a single quote for file format
+        if (displayChar === "'") {
+            displayChar = "\\'";
+        }
+        // Escape backslash if char is a backslash
+        if (displayChar === "\\") {
+            displayChar = "\\\\";
+        }
         return `'${displayChar}'(${charObj.id})`;
-      }).join(', ');
+      }).join(''); // JOIN WITHOUT COMMAS
 
       fileContent += `${charDetails}\n`;
       fileContent += `\n`;
@@ -649,6 +647,7 @@ export default function EditPermutationUI() {
     console.log('[saveAllDraftsToFile] File download triggered for all_drafts_with_ids.txt.');
   }
   
+  // Function to handle file upload
   function handleFileUpload(event) {
     const file = event.target.files[0];
     if (!file) {
