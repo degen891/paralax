@@ -27,6 +27,7 @@ function isDraftContentEmpty(arr) {
 
 // Find exact index of a subsequence of IDs in an ID array
 function findSegmentIndex(idArr, segmentIds) {
+  if (!segmentIds || segmentIds.length === 0) return 0; // Or -1 depending on desired behavior for empty/null segmentIds
   for (let i = 0; i + segmentIds.length <= idArr.length; i++) {
     let match = true;
     for (let j = 0; j < segmentIds.length; j++) {
@@ -174,7 +175,7 @@ function parseDraftsFile(fileContent) {
     return { drafts: newParsedDrafts, maxId: maxIdNumber };
 }
 
-// Basic styles for the dialog (can be moved to a CSS file)
+// Basic styles for the dialog
 const dialogOverlayStyle = {
   position: 'fixed',
   top: 0,
@@ -245,7 +246,6 @@ const buttonStyle = {
   border: '1px solid #ccc',
   cursor: 'pointer'
 };
-
 
 function SuggestionsDialog({ suggestions, currentIndex, onClose, onNext, onBack }) {
   if (!suggestions || suggestions.length === 0) {
@@ -340,8 +340,8 @@ export default function EditPermutationUI() {
   
   function saveHistory(newDrafts, newEdges) {
     console.log('[saveHistory] Saving. New drafts count:', newDrafts.length, 'New edges count:', newEdges.length);
-    setHistory(h => [...h, drafts]);
-    setRedoStack([]);
+    setHistory(h => [...h, { drafts: drafts, suggestions: editSuggestions }]);
+    setRedoStack([]); 
     setDrafts(newDrafts);
     setGraphEdges(e => [...e, ...newEdges]);
   }
@@ -352,13 +352,27 @@ export default function EditPermutationUI() {
       console.log('[undo] No history to undo.');
       return;
     }
-    const prev = history[history.length - 1];
-    setRedoStack(r => [drafts, ...r]);
+    
+    setRedoStack(r => [{ drafts: drafts, suggestions: editSuggestions }, ...r]);
+    
+    const prevState = history[history.length - 1];
     setHistory(h => h.slice(0, -1));
-    setDrafts(prev);
-    setSelectedDraft(prev[0] || []);
-    setCurrentEditText(charArrayToString(prev[0] || []));
-    console.log('[undo] Undone. prev draft text:', charArrayToString(prev[0] || []));
+    
+    setDrafts(prevState.drafts);
+    setEditSuggestions(prevState.suggestions); 
+    
+    setSelectedDraft(prevState.drafts[0] || []);
+    setCurrentEditText(charArrayToString(prevState.drafts[0] || []));
+    
+    if (showSuggestionsDialog && currentSuggestionViewIndex >= prevState.suggestions.length) {
+        if (prevState.suggestions.length === 0) {
+            setShowSuggestionsDialog(false);
+        }
+        setCurrentSuggestionViewIndex(Math.max(0, prevState.suggestions.length - 1));
+    }
+    
+    console.log('[undo] Undone. prev draft text:', charArrayToString(prevState.drafts[0] || []));
+    console.log('[undo] Reverted suggestions count to:', prevState.suggestions.length);
   }
 
   function redo() {
@@ -367,13 +381,19 @@ export default function EditPermutationUI() {
       console.log('[redo] No redo stack.');
       return;
     }
-    const next = redoStack[0];
-    setHistory(h => [...h, drafts]);
+
+    setHistory(h => [...h, { drafts: drafts, suggestions: editSuggestions }]);
+    
+    const nextState = redoStack[0];
     setRedoStack(r => r.slice(1));
-    setDrafts(next);
-    setSelectedDraft(next[0] || []);
-    setCurrentEditText(charArrayToString(next[0] || []));
-    console.log('[redo] Redone. next draft text:', charArrayToString(next[0] || []));
+    
+    setDrafts(nextState.drafts);
+    setEditSuggestions(nextState.suggestions); 
+    
+    setSelectedDraft(nextState.drafts[0] || []);
+    setCurrentEditText(charArrayToString(nextState.drafts[0] || []));
+    console.log('[redo] Redone. next draft text:', charArrayToString(nextState.drafts[0] || []));
+    console.log('[redo] Restored suggestions count to:', nextState.suggestions.length);
   }
 
   function initializeDraft() {
@@ -388,11 +408,12 @@ export default function EditPermutationUI() {
     setSelectedDraft(arr);
     setCurrentEditText(defaultDraft);
     setGraphEdges([{ from: null, to: arr }]);
-    setHistory([]);
-    setRedoStack([]);
+    setHistory([]); 
+    setRedoStack([]); 
     setConditionParts([]);
     setEditSuggestions([]); 
     editSuggestionCounterRef.current = 1; 
+    setShowSuggestionsDialog(false); 
   }
 
   function applyEdit() {
@@ -405,6 +426,7 @@ export default function EditPermutationUI() {
     const newText = currentEditText;
     console.log('[applyEdit] oldText:', `"${oldText}"`);
     console.log('[applyEdit] newText:', `"${newText}"`);
+    
     let initialPrefixLen = 0;
     const maxPref = Math.min(oldText.length, newText.length);
     while (initialPrefixLen < maxPref && oldText[initialPrefixLen] === newText[initialPrefixLen]) {
@@ -457,22 +479,6 @@ export default function EditPermutationUI() {
       }
     }
     console.log('[applyEdit] Diffing (Final): prefixLen:', prefixLen, 'suffixLen:', suffixLen);
-    console.log(`[applyEdit] DEBUG: newText for slice: "${newText}" (length: ${newText.length})`);
-    console.log(`[applyEdit] DEBUG: prefixLen for slice: ${prefixLen}`);
-    let endIndexForSlice = newText.length - suffixLen;
-    console.log(`[applyEdit] DEBUG: end index for slice (newText.length - suffixLen): ${endIndexForSlice}`);
-    let debugSliceRegion = "";
-    if (prefixLen < endIndexForSlice && prefixLen >= 0 && endIndexForSlice <= newText.length) {
-      for (let i = prefixLen; i < endIndexForSlice; i++) {
-        debugSliceRegion += `char: ${newText[i]} (code: ${newText.charCodeAt(i)}) |\n`;
-      }
-    } else {
-      debugSliceRegion = "[Skipped: Invalid slice indices]";
-      if (prefixLen >= endIndexForSlice) debugSliceRegion += ` (prefixLen ${prefixLen} >= endIndexForSlice ${endIndexForSlice})`;
-      if (prefixLen < 0) debugSliceRegion += ` (prefixLen ${prefixLen} < 0)`;
-      if (endIndexForSlice > newText.length) debugSliceRegion += ` (endIndexForSlice ${endIndexForSlice} > newText.length ${newText.length})`;
-    }
-    console.log(`[applyEdit] DEBUG: Expected slice region in newText (indices ${prefixLen} to ${endIndexForSlice - 1}): ${debugSliceRegion}`);
     const baseInsertedText = newText.slice(prefixLen, newText.length - suffixLen);
     const removedLen = oldText.length - prefixLen - suffixLen;
     console.log('[applyEdit] Diffing: removedLen:', removedLen, 'baseInsertedText:', `"${baseInsertedText}"`);
@@ -647,17 +653,8 @@ export default function EditPermutationUI() {
           console.log(`[applyEdit] Sentence Addition: Draft ${draftIndex}: Updated draft already seen, not adding.`);
         }
       });
-      saveHistory(newDraftsResult, newEdgesResult);
-      const matchedEdge = newEdgesResult.find(edge => edge.from === oldArr); 
-      if (matchedEdge) {
-        setSelectedDraft(matchedEdge.to);
-        setCurrentEditText(charArrayToString(matchedEdge.to));
-        console.log('[applyEdit] Sentence Addition: Updated selectedDraft and currentEditText to new version.');
-      } else {
-        setCurrentEditText(charArrayToString(selectedDraft)); 
-        console.log('[applyEdit] Sentence Addition: Selected draft was not directly evolved or no new edge from it. currentEditText reset to selectedDraft.');
-      }
-      console.log('[applyEdit] --- Sentence Addition Path End ---');
+      // saveHistory is called AFTER the loop and AFTER newDraftsResult/newEdgesResult are finalized for this path
+      // The setSelectedDraft/setCurrentEditText logic will also be after saveHistory call
     } else { 
         console.log('[applyEdit] --- General Path (Not Sentence Addition) ---');
         const autoSpecs = getAutoConditions(oldArr, prefixLen, removedLen);
@@ -684,7 +681,7 @@ export default function EditPermutationUI() {
           }
           if (isReplacement) {
             console.log(`[applyEdit] General Path: Replacement case for draft "${currentDraftTextForLog}"`);
-            const specForReplacement = autoSpecs.find(s => findSegmentIndex(idArr, s.segmentIds) !== -1) || autoSpecs[0];
+            const specForReplacement = autoSpecs.find(s => s.segmentIds && findSegmentIndex(idArr, s.segmentIds) !== -1) || autoSpecs[0];
             if (!specForReplacement || !specForReplacement.segmentIds) { 
               console.log(`[applyEdit] General Path: No suitable autoSpec found or spec is malformed for replacement in draft "${currentDraftTextForLog}". Skipping.`);
               continue;
@@ -743,24 +740,37 @@ export default function EditPermutationUI() {
             console.log(`[applyEdit] General Path: Updated draft already seen: "${charArrayToString(updated)}"`);
           }
         }
-    
-        saveHistory(newDraftsResult, newEdgesResult);
-
-        const edgeFromSelected = newEdgesResult.find(edge => edge.from === oldArr); 
-        if (edgeFromSelected) {
-            setSelectedDraft(edgeFromSelected.to);
-            setCurrentEditText(charArrayToString(edgeFromSelected.to));
-            console.log('[applyEdit] General Path: Evolution of selected draft found and selected.');
-        } else if (newEdgesResult.length === 1) { 
-            setSelectedDraft(newEdgesResult[0].to);
-            setCurrentEditText(charArrayToString(newEdgesResult[0].to));
-            console.log('[applyEdit] General Path: Single new edge (not from selected), updated selectedDraft and currentEditText.'); 
-        } else { 
-            setCurrentEditText(charArrayToString(selectedDraft)); 
-            console.log('[applyEdit] General Path: Multiple/no new edges or selected not directly evolved. currentEditText reset/updated based on current selectedDraft state.'); 
-        }
+        // saveHistory is called AFTER the loop and AFTER newDraftsResult/newEdgesResult are finalized for this path
     }
     
+    saveHistory(newDraftsResult, newEdgesResult); 
+    
+    const edgeFromSelected = newEdgesResult.find(edge => edge.from === oldArr);
+    if (edgeFromSelected) {
+        setSelectedDraft(edgeFromSelected.to);
+        setCurrentEditText(charArrayToString(edgeFromSelected.to));
+        console.log('[applyEdit] Path: Evolution of selected draft found and selected.');
+    } else if (newEdgesResult.length === 1 && !isSentenceAddition) { 
+        setSelectedDraft(newEdgesResult[0].to);
+        setCurrentEditText(charArrayToString(newEdgesResult[0].to));
+        console.log('[applyEdit] Path: Single new edge (not from selected), updated selectedDraft and currentEditText.'); 
+    } else if (isSentenceAddition) {
+        const matchedEdgeSA = newEdgesResult.find(edge => edge.from === oldArr);
+        if (matchedEdgeSA) {
+             setSelectedDraft(matchedEdgeSA.to);
+             setCurrentEditText(charArrayToString(matchedEdgeSA.to));
+             console.log('[applyEdit] Sentence Addition Path: Updated selectedDraft and currentEditText to new version.');
+        } else {
+            setCurrentEditText(charArrayToString(selectedDraft));
+            console.log('[applyEdit] Sentence Addition Path: Selected draft was not directly evolved or no new edge from it. currentEditText reset to selectedDraft.');
+        }
+    }
+     else { 
+        setCurrentEditText(charArrayToString(selectedDraft)); 
+        console.log('[applyEdit] Path: Multiple/no new edges or selected not directly evolved. currentEditText reset/updated based on current selectedDraft state.'); 
+    }
+
+
     let resultingDraftForSuggestion = null; 
     const finalOriginatingEdge = newEdgesResult.find(edge => edge.from === oldArr); 
 
@@ -777,7 +787,7 @@ export default function EditPermutationUI() {
     }
     
     if (!Array.isArray(resultingDraftForSuggestion)) {
-        console.warn("[applyEdit] resultingDraftForSuggestion was not an array, defaulting to empty array for suggestion. This indicates an issue.");
+        console.warn("[applyEdit] resultingDraftForSuggestion was not an array, defaulting to empty array for suggestion.");
         resultingDraftForSuggestion = [];
     }
 
@@ -872,6 +882,8 @@ export default function EditPermutationUI() {
             setRedoStack([]);
             setEditSuggestions([]); 
             editSuggestionCounterRef.current = 1; 
+            setShowSuggestionsDialog(false);
+
 
             if (parsedData.drafts.length > 0) {
                 setSelectedDraft(parsedData.drafts[0]);
