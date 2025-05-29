@@ -27,7 +27,6 @@ function isDraftContentEmpty(arr) {
 
 // Find exact index of a subsequence of IDs in an ID array
 function findSegmentIndex(idArr, segmentIds) {
-  // console.log('[findSegmentIndex] Called with idArr:', idArr, 'segmentIds:', segmentIds);
   for (let i = 0; i + segmentIds.length <= idArr.length; i++) {
     let match = true;
     for (let j = 0; j < segmentIds.length; j++) {
@@ -37,19 +36,15 @@ function findSegmentIndex(idArr, segmentIds) {
       }
     }
     if (match) {
-      // console.log('[findSegmentIndex] Match found at index:', i);
       return i;
     }
   }
-  // console.log('[findSegmentIndex] No match found, returning -1');
   return -1;
 }
 
 // Check if sequence exists in ID array
 function idSeqExists(idArr, seq) {
-  // console.log('[idSeqExists] Called with idArr:', idArr, 'seq:', seq);
   const result = findSegmentIndex(idArr, seq) >= 0;
-  // console.log('[idSeqExists] Result:', result);
   return result;
 }
 
@@ -100,7 +95,7 @@ function parseDraftsFile(fileContent) {
 
     const draftSections = fileContent.split("--- DRAFT ");
     draftSections.forEach(section => {
-        if (!section.trim() || !/^\d+ ---/.test(section)) return; // Skip empty or non-draft sections
+        if (!section.trim() || !/^\d+ ---/.test(section)) return; 
 
         const lines = section.split('\n');
         let readingCharDetails = false;
@@ -109,12 +104,11 @@ function parseDraftsFile(fileContent) {
         for (const line of lines) {
             if (line.startsWith("Character Details:")) {
                 readingCharDetails = true;
-                // The actual details are expected on the *next* non-empty line typically
                 continue; 
             }
 
             if (readingCharDetails && line.trim().length > 0) {
-                const parts = line.trim().split(/,\s*/); // Split by comma and optional space
+                const parts = line.trim().split(/,\s*/); 
                 for (const part of parts) {
                     const match = part.match(/'(.*?)'\(([^)]+)\)/);
                     if (match) {
@@ -124,7 +118,6 @@ function parseDraftsFile(fileContent) {
                         if (char === '\\n') char = '\n';
                         else if (char === '\\t') char = '\t';
                         else if (char === '\\r') char = '\r';
-                        // Add more unescapes if needed e.g. for '\\' or '\''
                         
                         currentDraftCharObjs.push({ id, char });
 
@@ -136,7 +129,6 @@ function parseDraftsFile(fileContent) {
                         }
                     }
                 }
-                // Assuming character details for a draft are on one (potentially wrapped) line after the header.
                 readingCharDetails = false; 
             }
         }
@@ -151,7 +143,6 @@ function parseDraftsFile(fileContent) {
     return { drafts: newParsedDrafts, maxId: maxIdNumber };
 }
 
-
 export default function EditPermutationUI() {
   const [defaultDraft, setDefaultDraft] = useState("");
   const [drafts, setDrafts] = useState([]);
@@ -162,7 +153,7 @@ export default function EditPermutationUI() {
   const [redoStack, setRedoStack] = useState([]);
   const [graphEdges, setGraphEdges] = useState([]);
   const draftBoxRef = useRef(null);
-  const fileInputRef = useRef(null); // Ref for the file input
+  const fileInputRef = useRef(null); 
 
   const stringDrafts = drafts.map(arr => charArrayToString(arr));
   const stringEdges = graphEdges.map(({ from, to }) => ({
@@ -241,13 +232,11 @@ export default function EditPermutationUI() {
     const newText = currentEditText;
     console.log('[applyEdit] oldText:', `"${oldText}"`);
     console.log('[applyEdit] newText:', `"${newText}"`);
-    // --- MODIFIED DIFFING LOGIC ---
     let initialPrefixLen = 0;
     const maxPref = Math.min(oldText.length, newText.length);
     while (initialPrefixLen < maxPref && oldText[initialPrefixLen] === newText[initialPrefixLen]) {
       initialPrefixLen++;
     }
-
     let initialSuffixLen = 0;
     let olFull = oldText.length;
     let nlFull = newText.length;
@@ -255,7 +244,6 @@ export default function EditPermutationUI() {
       oldText[olFull - 1 - initialSuffixLen] === newText[nlFull - 1 - initialSuffixLen]) {
       initialSuffixLen++;
     }
-
     let prefixLen = initialPrefixLen;
     let suffixLen = initialSuffixLen;
     console.log('[applyEdit] Diffing (Initial): initialPrefixLen:', initialPrefixLen, 'initialSuffixLen:', initialSuffixLen);
@@ -264,16 +252,13 @@ export default function EditPermutationUI() {
     if (initialPrefixLen > 0 &&
       oldText.charAt(initialPrefixLen - 1) === ' ' &&
       newText.charAt(initialPrefixLen - 1) === ' ') {
-
       console.log('[applyEdit] Diffing Heuristic: Initial prefix ends on a common space. Checking shorter prefix.');
       const shorterPrefixLen = initialPrefixLen - 1;
-
       let shorterSuffixLen = 0;
       while (shorterSuffixLen < Math.min(olFull - shorterPrefixLen, nlFull - shorterPrefixLen) &&
         oldText[olFull - 1 - shorterSuffixLen] === newText[nlFull - 1 - shorterSuffixLen]) {
         shorterSuffixLen++;
       }
-
       const baseWithShorterPrefix = newText.slice(shorterPrefixLen, newText.length - shorterSuffixLen);
       console.log('[applyEdit] Diffing Heuristic: Shorter prefix candidate:', shorterPrefixLen, 'Shorter suffix candidate:', shorterSuffixLen);
       console.log('[applyEdit] Diffing Heuristic: baseWithShorterPrefix:', `"${baseWithShorterPrefix}"`);
@@ -299,8 +284,6 @@ export default function EditPermutationUI() {
         }
       }
     }
-    // --- END MODIFIED DIFFING LOGIC ---
-
     console.log('[applyEdit] Diffing (Final): prefixLen:', prefixLen, 'suffixLen:', suffixLen);
     console.log(`[applyEdit] DEBUG: newText for slice: "${newText}" (length: ${newText.length})`);
     console.log(`[applyEdit] DEBUG: prefixLen for slice: ${prefixLen}`);
@@ -346,9 +329,7 @@ export default function EditPermutationUI() {
           console.log(`[applyEdit] Sentence Addition: Draft ${draftIndex} skipped due to condition parts.`);
           return;
         }
-
         let anchorIdIndexInDArr = -1;
-
         if (uniquePrecedingContextIds.length === 0) {
           anchorIdIndexInDArr = -2;
           console.log(`[applyEdit] Sentence Addition: Draft ${draftIndex}: No preceding context, anchorIdIndexInDArr = -2.`);
@@ -362,7 +343,6 @@ export default function EditPermutationUI() {
             }
           }
         }
-
         if (anchorIdIndexInDArr === -1 && uniquePrecedingContextIds.length > 0) {
           anchorIdIndexInDArr = -2;
           console.log(`[applyEdit] Sentence Addition: Draft ${draftIndex}: Preceding context IDs specified but not found. anchorIdIndexInDArr set to -2.`);
@@ -412,7 +392,6 @@ export default function EditPermutationUI() {
               break;
             }
           }
-
           if (anchorSegmentText !== null) {
             const trimmedSegment = anchorSegmentText.trim().replace(/\n$/, '');
             const isTrueSentence = /[.?!;:]$/.test(trimmedSegment);
@@ -431,7 +410,6 @@ export default function EditPermutationUI() {
             if (insertionPointInDArr > targetDraftText.length) insertionPointInDArr = targetDraftText.length;
             console.log(`[applyEdit] Sentence Addition: Draft ${draftIndex}: Defaulted insertionPointInDArr = ${insertionPointInDArr}.`);
           }
-
           let originalInsertionPointForNewlineSkip = insertionPointInDArr;
           while (insertionPointInDArr < targetDraftText.length && targetDraftText.charAt(insertionPointInDArr) === '\n') {
             insertionPointInDArr++;
@@ -440,7 +418,6 @@ export default function EditPermutationUI() {
             console.log(`[applyEdit] Sentence Addition: Draft ${draftIndex}: Adjusted insertionPointInDArr from ${originalInsertionPointForNewlineSkip} to ${insertionPointInDArr} to skip newlines.`);
           }
         }
-
         let finalInsertionPoint = insertionPointInDArr;
         console.log(`[applyEdit] Sentence Addition: Draft ${draftIndex}: insertionPointInDArr before space adjustment logic = ${insertionPointInDArr}`);
         if (insertionPointInDArr < targetDraftText.length) {
@@ -533,7 +510,6 @@ export default function EditPermutationUI() {
         updated = [...before, ...insArr, ...after];
       } else {
         console.log(`[applyEdit] General Path: Insert/Delete case for draft "${currentDraftTextForLog}"`);
-        // const currentOpRemovedLen = baseInsertedText.length === 0 ? removedLen : 0; // This var was unused
         for (let spec of autoSpecs) {
           console.log(`[applyEdit] General Path: Applying spec:`, spec);
           const pos = findSegmentIndex(idArr, spec.segmentIds);
@@ -572,7 +548,6 @@ export default function EditPermutationUI() {
     }
 
     saveHistory(newDraftsArr, newEdges);
-    // Using simpler logic from user's original working version for this part
     if (newEdges.length === 1) {
       setSelectedDraft(newEdges[0].to);
       setCurrentEditText(charArrayToString(newEdges[0].to));
@@ -585,10 +560,9 @@ export default function EditPermutationUI() {
     console.log('--- [applyEdit] End ---');
   }
 
-  // MODIFIED saveAllDraftsToFile function
   function saveAllDraftsToFile() {
     console.log('[saveAllDraftsToFile] Initiated save with char IDs.');
-    if (drafts.length === 0) { // Use main 'drafts' state
+    if (drafts.length === 0) {
       alert("No drafts to save!");
       console.log('[saveAllDraftsToFile] No drafts available to save.');
       return;
@@ -596,12 +570,12 @@ export default function EditPermutationUI() {
 
     let fileContent = `Total Drafts: ${drafts.length}\n\n`;
 
-    drafts.forEach((draftCharObjArray, index) => { // Iterate over 'drafts'
+    drafts.forEach((draftCharObjArray, index) => {
       fileContent += `--- DRAFT ${index + 1} ---\n`;
       const text = charArrayToString(draftCharObjArray);
       const indentedText = text.split('\n').map(line => `      ${line}`).join('\n');
       fileContent += `Text:\n${indentedText}\n`;
-      fileContent += `Character Details:\n  `; // Start the line for char details with an indent
+      fileContent += `Character Details:\n  `;
       
       const charDetails = draftCharObjArray.map(charObj => {
         let displayChar = charObj.char;
@@ -631,9 +605,7 @@ export default function EditPermutationUI() {
 
     console.log('[saveAllDraftsToFile] File download triggered for all_drafts_with_ids.txt.');
   }
-  // END MODIFIED saveAllDraftsToFile function
   
-  // NEW function to handle file upload
   function handleFileUpload(event) {
     const file = event.target.files[0];
     if (!file) {
@@ -646,12 +618,11 @@ export default function EditPermutationUI() {
             const parsedData = parseDraftsFile(content); 
             
             setDrafts(parsedData.drafts);
-            if (parsedData.maxId >= 0) { // Ensure maxId was actually found
+            if (parsedData.maxId >= 0) { 
                 globalCharCounter = parsedData.maxId + 1;
             } else {
-                globalCharCounter = 0; // Reset if no IDs were in the file or all were non-standard
+                globalCharCounter = 0; 
             }
-
 
             setHistory([]);
             setRedoStack([]);
@@ -671,14 +642,12 @@ export default function EditPermutationUI() {
             console.error("Failed to parse uploaded drafts file:", error);
             alert(`Failed to parse file: ${error.message}`);
         }
-        // Reset file input value so onChange fires again for the same file if needed
         if (fileInputRef.current) {
              fileInputRef.current.value = null;
         }
     };
     reader.readAsText(file);
   }
-  // END NEW function to handle file upload
 
   function handleSelect() {
     console.log('[handleSelect] MouseUp event triggered.');
@@ -755,24 +724,26 @@ export default function EditPermutationUI() {
     <div className="p-4 space-y-6 text-gray-800">
       <h1 className="text-2xl font-bold">Welcome to Parallax!</h1>
 
-      <div className="space-y-2">
-        <label>Initial Draft:</label>
+      <div className="space-y-2 max-w-lg mx-auto">
+        <label className="block text-center">Initial Draft:</label>
         <textarea
           value={defaultDraft}
           onChange={e => setDefaultDraft(e.target.value)}
           className="w-full p-2 border rounded"
+          rows="10"
           placeholder="Type starting text…"
         />
-        <button
-          onClick={initializeDraft}
-          className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700"
-        >
-          Set Initial Draft
-        </button>
+        <div className="flex justify-center mt-2">
+          <button
+            onClick={initializeDraft}
+            className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700"
+          >
+            Set Initial Draft
+          </button>
+        </div>
       </div>
       
-      {/* Upload and Download Buttons Area */}
-      <div className="my-4 flex space-x-2">
+      <div className="my-4 flex space-x-2 justify-center">
         <div>
             <input
                 type="file"
@@ -798,13 +769,11 @@ export default function EditPermutationUI() {
         )}
       </div>
 
-
       {stringDrafts.length > 0 && (
         <>
-          <div>
-            <h2 className="text-xl font-semibold">All Drafts:</h2>
-            {/* Download button moved up, keep ul here if needed or remove if download is primary action here */}
-            <ul className="flex flex-wrap gap-2 mt-2">
+          <div className="max-w-2xl mx-auto"> {/* Adjusted width for better list display */}
+            <h2 className="text-xl font-semibold text-center">All Drafts:</h2>
+            <ul className="flex flex-wrap gap-2 mt-2 justify-center">
               {stringDrafts.map((text, i) => (
                 <li
                   key={i}
@@ -816,14 +785,14 @@ export default function EditPermutationUI() {
                   className={`px-2 py-1 rounded cursor-pointer ${drafts[i] === selectedDraft ?
                     'bg-blue-200' : 'bg-gray-100'}`}
                 >
-                  {text}
+                  {text.length > 50 ? text.substring(0, 47) + "..." : text}
                 </li>
               ))}
             </ul>
           </div>
 
-          <div>
-            <h2 className="text-xl font-semibold">Selected Draft:</h2>
+          <div className="max-w-lg mx-auto">
+            <h2 className="text-xl font-semibold text-center">Selected Draft:</h2>
             <textarea
               ref={draftBoxRef}
               onMouseUp={handleSelect}
@@ -831,18 +800,19 @@ export default function EditPermutationUI() {
               onChange={e => {
                 setCurrentEditText(e.target.value);
               }}
-              className="w-full p-2 border rounded whitespace-pre-wrap min-h-[80px]"
+              className="w-full p-2 border rounded whitespace-pre-wrap"
+              rows="10"
             />
-            <div className="mt-2">Conditions: {getConditionDisplayText()}</div>
-            <div className="flex space-x-2 mt-4">
+            <div className="mt-2 text-center">Conditions: {getConditionDisplayText()}</div>
+            <div className="flex space-x-2 mt-4 justify-center">
               <button onClick={applyEdit} className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700">Submit Edit</button>
               <button onClick={undo} className="bg-gray-200 px-4 py-2 rounded hover:bg-gray-300">Undo</button>
               <button onClick={redo} className="bg-gray-200 px-4 py-2 rounded hover:bg-gray-300">Redo</button>
             </div>
           </div>
 
-          <div>
-            <h2 className="text-xl font-semibold">Version Graph:</h2>
+          <div className="max-w-4xl mx-auto"> {/* Wider for graph if needed */}
+            <h2 className="text-xl font-semibold text-center">Version Graph:</h2>
             <VersionGraph drafts={stringDrafts} edges={stringEdges} onNodeClick={text => {
               const idx = stringDrafts.indexOf(text);
               console.log(`[VersionGraph onNodeClick] Clicked node with text: "${text}", found at index: ${idx}`);
