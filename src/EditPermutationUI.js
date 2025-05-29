@@ -247,7 +247,6 @@ const buttonStyle = {
   cursor: 'pointer'
 };
 
-
 function SuggestionsDialog({ suggestions, currentIndex, onClose, onNext, onBack }) {
   if (!suggestions || suggestions.length === 0) {
     return null;
@@ -267,39 +266,54 @@ function SuggestionsDialog({ suggestions, currentIndex, onClose, onNext, onBack 
 
   const renderHighlightedText = (charArray, isComponent1, suggestion) => {
     if (!Array.isArray(charArray) || charArray === null) {
-        // console.warn("renderHighlightedText: charArray is not an array or is null", charArray);
         return "Invalid data";
     }
 
     return charArray.map(charObj => {
         if (!charObj || typeof charObj.id === 'undefined') {
-            // console.warn("renderHighlightedText: Invalid charObj encountered", charObj);
             return null; 
         }
 
-        let customStyle = {};
+        let customStyle = {
+            // Ensure default text color is readable against highlights, e.g., black
+            // color: 'black', // Usually not needed if default text color is black
+            padding: '0.5px 0', // Slight padding to make background more visible
+            borderRadius: '2px', // Optional: slightly rounded corners for highlight
+        };
 
+        // Blue highlight for conditionCharIds (highest precedence)
         if (suggestion.conditionCharIds.has(charObj.id)) {
-            customStyle.color = 'blue';
+            customStyle.backgroundColor = 'lightblue'; 
         }
         
+        // Red highlight for removedCharIds (Component 1 only)
+        // Applied only if not already highlighted by condition
         if (isComponent1 && suggestion.removedCharIds.has(charObj.id)) {
-            if (!customStyle.color) { // Only apply red if not already colored blue by condition
-                customStyle.color = 'red';
+            if (!customStyle.backgroundColor) { 
+                customStyle.backgroundColor = 'lightpink'; 
             }
-            // customStyle.textDecoration = 'line-through'; // Optional: for removed text
-        } else if (!isComponent1 && suggestion.newCharIds.has(charObj.id)) {
-            if (!customStyle.color) { // Only apply green if not already colored blue by condition
-                customStyle.color = 'green';
+            // customStyle.textDecoration = 'line-through'; // Optional
+        } 
+        // Green highlight for newCharIds (Component 2 only)
+        // Applied only if not already highlighted by condition
+        else if (!isComponent1 && suggestion.newCharIds.has(charObj.id)) {
+            if (!customStyle.backgroundColor) { 
+                customStyle.backgroundColor = 'lightgreen';
             }
         }
 
         let displayChar = charObj.char;
-        // Using <pre> should handle spaces and newlines correctly when rendering spans.
-        // If spaces collapse, uncomment the following:
+        // Using <pre> with inline-spans generally handles whitespace well.
+        // If spaces seem to collapse or not get highlighted, use non-breaking space:
         // if (displayChar === ' ') {
-        //     displayChar = '\u00A0'; // Non-breaking space
+        //     displayChar = '\u00A0'; 
         // }
+        
+        // If character is a newline, render it as such to ensure structure
+        if (displayChar === '\n') {
+            return <br key={charObj.id + "-br"} />;
+        }
+
 
         return (
             <span key={charObj.id} style={customStyle}>
@@ -349,7 +363,6 @@ function SuggestionsDialog({ suggestions, currentIndex, onClose, onNext, onBack 
     </div>
   );
 }
-
 
 export default function EditPermutationUI() {
   const [defaultDraft, setDefaultDraft] = useState("");
