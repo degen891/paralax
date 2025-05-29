@@ -712,7 +712,7 @@ export default function EditPermutationUI() {
 
   return (
     <div className="p-4 space-y-6 text-gray-800">
-      <h1 className="text-2xl font-bold">Welcome to Parallax!</h1>
+      <h1 className="text-2xl font-bold text-center">Welcome to Parallax!</h1>
 
       <div className="space-y-2 max-w-lg mx-auto">
         <label className="block text-center">Initial Draft:</label>
@@ -761,46 +761,48 @@ export default function EditPermutationUI() {
 
       {stringDrafts.length > 0 && (
         <>
-          <div className="flex flex-col lg:flex-row lg:space-x-6 justify-around items-start px-4">
-            {/* All Drafts Section */}
-            <div className="lg:flex-1 w-full lg:max-w-xl mb-6 lg:mb-0">
-              <h2 className="text-xl font-semibold text-center mb-2">All Drafts:</h2>
-              <ul className="flex flex-wrap gap-2 justify-center bg-gray-50 p-3 rounded-md shadow">
-                {stringDrafts.map((text, i) => (
-                  <li
-                    key={i}
-                    onClick={() => {
-                      console.log(`[DraftClick] Selecting draft index ${i}: "${text}"`);
-                      setSelectedDraft(drafts[i]);
-                      setCurrentEditText(text); setConditionParts([]);
-                    }}
-                    className={`px-2 py-1 rounded cursor-pointer shadow-sm hover:shadow-md transition-shadow ${drafts[i] === selectedDraft ?
-                      'bg-blue-300 text-blue-900' : 'bg-gray-200 hover:bg-gray-300'}`}
-                  >
-                    {text.length > 50 ? text.substring(0, 47) + "..." : text}
-                  </li>
-                ))}
-              </ul>
-            </div>
+          <div className="max-w-6xl mx-auto px-4">
+            <div className="flex flex-col lg:flex-row lg:space-x-6 justify-center items-start">
+              {/* All Drafts Section */}
+              <div className="lg:flex-1 w-full mb-6 lg:mb-0">
+                <h2 className="text-xl font-semibold text-center mb-2">All Drafts:</h2>
+                <ul className="flex flex-wrap gap-2 justify-center bg-gray-50 p-3 rounded-md shadow max-h-[400px] overflow-y-auto">
+                  {stringDrafts.map((text, i) => (
+                    <li
+                      key={i}
+                      onClick={() => {
+                        console.log(`[DraftClick] Selecting draft index ${i}: "${text}"`);
+                        setSelectedDraft(drafts[i]);
+                        setCurrentEditText(text); setConditionParts([]);
+                      }}
+                      className={`px-2 py-1 rounded cursor-pointer shadow-sm hover:shadow-md transition-shadow ${drafts[i] === selectedDraft ?
+                        'bg-blue-300 text-blue-900' : 'bg-gray-200 hover:bg-gray-300'}`}
+                    >
+                      {text.length > 50 ? text.substring(0, 47) + "..." : text}
+                    </li>
+                  ))}
+                </ul>
+              </div>
 
-            {/* Selected Draft Section */}
-            <div className="lg:flex-1 w-full lg:max-w-lg">
-              <h2 className="text-xl font-semibold text-center mb-2">Selected Draft:</h2>
-              <textarea
-                ref={draftBoxRef}
-                onMouseUp={handleSelect}
-                value={currentEditText}
-                onChange={e => {
-                  setCurrentEditText(e.target.value);
-                }}
-                className="w-full p-2 border rounded whitespace-pre-wrap shadow-inner"
-                rows="10"
-              />
-              <div className="mt-2 text-center">Conditions: {getConditionDisplayText()}</div>
-              <div className="flex space-x-2 mt-4 justify-center">
-                <button onClick={applyEdit} className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700">Submit Edit</button>
-                <button onClick={undo} className="bg-gray-200 px-4 py-2 rounded hover:bg-gray-300">Undo</button>
-                <button onClick={redo} className="bg-gray-200 px-4 py-2 rounded hover:bg-gray-300">Redo</button>
+              {/* Selected Draft Section */}
+              <div className="lg:flex-1 w-full">
+                <h2 className="text-xl font-semibold text-center mb-2">Selected Draft:</h2>
+                <textarea
+                  ref={draftBoxRef}
+                  onMouseUp={handleSelect}
+                  value={currentEditText}
+                  onChange={e => {
+                    setCurrentEditText(e.target.value);
+                  }}
+                  className="w-full p-2 border rounded whitespace-pre-wrap shadow-inner"
+                  rows="10"
+                />
+                <div className="mt-2 text-center">Conditions: {getConditionDisplayText()}</div>
+                <div className="flex space-x-2 mt-4 justify-center">
+                  <button onClick={applyEdit} className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700">Submit Edit</button>
+                  <button onClick={undo} className="bg-gray-200 px-4 py-2 rounded hover:bg-gray-300">Undo</button>
+                  <button onClick={redo} className="bg-gray-200 px-4 py-2 rounded hover:bg-gray-300">Redo</button>
+                </div>
               </div>
             </div>
           </div>
