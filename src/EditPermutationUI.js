@@ -9,7 +9,14 @@ function generateCharId() {
 
 // Convert a CharObj[] to plain string
 function charArrayToString(arr) {
+  if (!Array.isArray(arr)) return "";
   return arr.map(c => c.char).join("");
+}
+
+// Helper to generate a unique key for a draft based on its char IDs
+function getDraftKey(charArr) {
+  if (!Array.isArray(charArr)) return "";
+  return charArr.map(c => c.id).join(',');
 }
 
 // Helper function to check if a draft is effectively empty
@@ -27,7 +34,8 @@ function isDraftContentEmpty(arr) {
 
 // Find exact index of a subsequence of IDs in an ID array
 function findSegmentIndex(idArr, segmentIds) {
-  if (!segmentIds || segmentIds.length === 0) return 0; // Or -1 depending on desired behavior for empty/null segmentIds
+  if (!segmentIds || segmentIds.length === 0) return 0; 
+  if (!Array.isArray(idArr)) return -1;
   for (let i = 0; i + segmentIds.length <= idArr.length; i++) {
     let match = true;
     for (let j = 0; j < segmentIds.length; j++) {
@@ -172,161 +180,68 @@ function parseDraftsFile(fileContent) {
         console.warn("[parseDraftsFile] CHARACTER DETAILS section found, but no drafts were successfully parsed from it.");
     }
     console.log(`[parseDraftsFile] Finished parsing. Found ${newParsedDrafts.length} drafts. Max ID num: ${maxIdNumber}`);
-    return { drafts: newParsedDrafts, maxId: maxIdNumber };
+    return { drafts: newParsedDrafts, maxId: maxIdNumber }; // Returning 'drafts' which are CharObj[][]
 }
 
-// Basic styles for the dialog
-const dialogOverlayStyle = {
-  position: 'fixed',
-  top: 0,
-  left: 0,
-  right: 0,
-  bottom: 0,
-  backgroundColor: 'rgba(0, 0, 0, 0.5)',
-  display: 'flex',
-  justifyContent: 'center',
-  alignItems: 'center',
-  zIndex: 1000,
-};
-
-const dialogContentStyle = {
-  backgroundColor: 'white',
-  padding: '20px',
-  borderRadius: '8px',
-  boxShadow: '0 4px 6px rgba(0, 0, 0, 0.1)',
-  width: '80%',
-  maxWidth: '800px',
-  maxHeight: '90vh',
-  overflowY: 'auto',
-  display: 'flex',
-  flexDirection: 'column'
-};
-
-const comparisonContainerStyle = {
-  display: 'flex',
-  justifyContent: 'space-between',
-  flexGrow: 1,
-  overflowY: 'auto', 
-  marginBottom: '15px',
-};
-
-const columnStyle = {
-  width: '48%',
-  border: '1px solid #eee',
-  padding: '10px',
-  borderRadius: '4px',
-  backgroundColor: '#f9f9f9',
-  display: 'flex', 
-  flexDirection: 'column' 
-};
-
-const preStyle = {
-  whiteSpace: 'pre-wrap',
-  wordWrap: 'break-word',
-  margin: 0,
-  backgroundColor: 'white',
-  padding: '8px',
-  border: '1px solid #ddd',
-  borderRadius: '4px',
-  flexGrow: 1, 
-  overflowY: 'auto' 
-};
-
-const dialogNavigationStyle = {
-  display: 'flex',
-  justifyContent: 'space-between',
-  marginTop: '10px',
-  paddingTop: '10px',
-  borderTop: '1px solid #eee'
-};
-
-const buttonStyle = {
-  padding: '8px 15px',
-  borderRadius: '4px',
-  border: '1px solid #ccc',
-  cursor: 'pointer'
-};
+const dialogOverlayStyle = { position: 'fixed',top:0,left:0,right:0,bottom:0,backgroundColor:'rgba(0,0,0,0.5)',display:'flex',justifyContent:'center',alignItems:'center',zIndex:1000 };
+const dialogContentStyle = { backgroundColor:'white',padding:'20px',borderRadius:'8px',boxShadow:'0 4px 6px rgba(0,0,0,0.1)',width:'80%',maxWidth:'800px',maxHeight:'90vh',overflowY:'auto',display:'flex',flexDirection:'column'};
+const comparisonContainerStyle = { display:'flex',justifyContent:'space-between',flexGrow:1,overflowY:'auto',marginBottom:'15px'};
+const columnStyle = { width:'48%',border:'1px solid #eee',padding:'10px',borderRadius:'4px',backgroundColor:'#f9f9f9',display:'flex',flexDirection:'column'};
+const preStyle = { whiteSpace:'pre-wrap',wordWrap:'break-word',margin:0,backgroundColor:'white',padding:'8px',border:'1px solid #ddd',borderRadius:'4px',flexGrow:1,overflowY:'auto'};
+const dialogNavigationStyle = { display:'flex',justifyContent:'space-between',marginTop:'10px',paddingTop:'10px',borderTop:'1px solid #eee'};
+const buttonStyle = { padding:'8px 15px',borderRadius:'4px',border:'1px solid #ccc',cursor:'pointer'};
 
 function SuggestionsDialog({ suggestions, currentIndex, onClose, onNext, onBack }) {
-  if (!suggestions || suggestions.length === 0) {
-    return null;
-  }
-
+  if (!suggestions || suggestions.length === 0) return null;
   const currentSuggestion = suggestions[currentIndex];
   if (!currentSuggestion) {
-    return (
-      <div style={dialogOverlayStyle}>
-        <div style={dialogContentStyle}>
-          <p>Error: Suggestion not found.</p>
-          <button onClick={onClose} style={buttonStyle}>Close</button>
-        </div>
-      </div>
-    );
+    return ( <div style={dialogOverlayStyle}><div style={dialogContentStyle}><p>Error: Suggestion not found.</p><button onClick={onClose} style={buttonStyle}>Close</button></div></div> );
   }
-
-  const comp1Text = Array.isArray(currentSuggestion.selectedDraftAtTimeOfEdit)
-    ? charArrayToString(currentSuggestion.selectedDraftAtTimeOfEdit)
-    : "Invalid data for Component 1";
-  const comp2Text = Array.isArray(currentSuggestion.resultingDraft)
-    ? charArrayToString(currentSuggestion.resultingDraft)
-    : "Invalid data for Component 2";
-
-  return (
-    <div style={dialogOverlayStyle}>
-      <div style={dialogContentStyle}>
-        <h3 style={{ textAlign: 'center', marginTop: 0 }}>
-          Edit Suggestion ID: {currentSuggestion.id} (Entry {currentIndex + 1} of {suggestions.length})
-        </h3>
-        <div style={comparisonContainerStyle}>
-          <div style={columnStyle}>
-            <h4>Before Edit (Component 1)</h4>
-            <pre style={preStyle}>{comp1Text}</pre>
-          </div>
-          <div style={columnStyle}>
-            <h4>After Edit (Component 2)</h4>
-            <pre style={preStyle}>{comp2Text}</pre>
-          </div>
-        </div>
-        <div style={dialogNavigationStyle}>
-          <button onClick={onBack} disabled={currentIndex === 0} style={buttonStyle}>
-            Back
-          </button>
-          <button onClick={onNext} disabled={currentIndex === suggestions.length - 1} style={buttonStyle}>
-            Next
-          </button>
-          <button onClick={onClose} style={buttonStyle}>
-            Close
-          </button>
-        </div>
-      </div>
-    </div>
-  );
+  const renderHighlightedText = (charArray, isComponent1, suggestion) => {
+    if (!Array.isArray(charArray) || charArray === null) return "Invalid data";
+    return charArray.map(charObj => {
+        if (!charObj || typeof charObj.id === 'undefined') return null; 
+        let customStyle = { padding: '0.5px 0', borderRadius: '2px' };
+        if (suggestion.conditionCharIds.has(charObj.id)) customStyle.backgroundColor = 'lightblue'; 
+        if (isComponent1 && suggestion.removedCharIds.has(charObj.id)) {
+            if (!customStyle.backgroundColor) customStyle.backgroundColor = 'lightpink'; 
+        } else if (!isComponent1 && suggestion.newCharIds.has(charObj.id)) {
+            if (!customStyle.backgroundColor) customStyle.backgroundColor = 'lightgreen';
+        }
+        let displayChar = charObj.char;
+        if (displayChar === '\n') return <br key={charObj.id + "-br"} />;
+        return (<span key={charObj.id} style={customStyle}>{displayChar}</span>);
+    });
+  };
+  const comp1Highlighted = currentSuggestion && Array.isArray(currentSuggestion.selectedDraftAtTimeOfEdit) ? renderHighlightedText(currentSuggestion.selectedDraftAtTimeOfEdit, true, currentSuggestion) : "Component 1 data is invalid.";
+  const comp2Highlighted = currentSuggestion && Array.isArray(currentSuggestion.resultingDraft) ? renderHighlightedText(currentSuggestion.resultingDraft, false, currentSuggestion) : "Component 2 data is invalid.";
+  return ( <div style={dialogOverlayStyle}><div style={dialogContentStyle}><h3 style={{ textAlign: 'center', marginTop: 0 }}>Edit Suggestion ID: {currentSuggestion.id} (Entry {currentIndex + 1} of {suggestions.length})</h3><div style={comparisonContainerStyle}><div style={columnStyle}><h4>Before Edit (Component 1)</h4><pre style={preStyle}>{comp1Highlighted}</pre></div><div style={columnStyle}><h4>After Edit (Component 2)</h4><pre style={preStyle}>{comp2Highlighted}</pre></div></div><div style={dialogNavigationStyle}><button onClick={onBack} disabled={currentIndex === 0} style={buttonStyle}>Back</button><button onClick={onNext} disabled={currentIndex === suggestions.length - 1} style={buttonStyle}>Next</button><button onClick={onClose} style={buttonStyle}>Close</button></div></div></div>);
 }
 
 
 export default function EditPermutationUI() {
   const [defaultDraft, setDefaultDraft] = useState("");
-  const [drafts, setDrafts] = useState([]);
-  const [selectedDraft, setSelectedDraft] = useState([]);
+  const [drafts, setDrafts] = useState([]); // CharObj[][]
+  const [selectedDraft, setSelectedDraft] = useState([]); // CharObj[]
   const [currentEditText, setCurrentEditText] = useState("");
   const [conditionParts, setConditionParts] = useState([]);
-  const [history, setHistory] = useState([]);
-  const [redoStack, setRedoStack] = useState([]);
-  const [graphEdges, setGraphEdges] = useState([]);
+  const [history, setHistory] = useState([]); // Stores { drafts: CharObj[][], suggestions: EditSuggestionEntry[], draftVectors: Map }
+  const [redoStack, setRedoStack] = useState([]); // Stores { drafts: CharObj[][], suggestions: EditSuggestionEntry[], draftVectors: Map }
+  const [graphEdges, setGraphEdges] = useState([]); // Stores { from: CharObj[], to: CharObj[] }
   const draftBoxRef = useRef(null);
   const fileInputRef = useRef(null); 
 
   const [editSuggestions, setEditSuggestions] = useState([]);
   const editSuggestionCounterRef = useRef(1);
+  const [draftVectorsMap, setDraftVectorsMap] = useState(new Map()); // New state for draft vectors Map<string, number[]>
 
   const [showSuggestionsDialog, setShowSuggestionsDialog] = useState(false);
   const [currentSuggestionViewIndex, setCurrentSuggestionViewIndex] = useState(0);
 
-
   const stringDrafts = drafts.map(arr => charArrayToString(arr));
   const stringEdges = graphEdges.map(({ from, to }) => ({
     from: from ? charArrayToString(from) : null,
-    to: charArrayToString(to),
+    to: to ? charArrayToString(to) : null,
   }));
 
   useEffect(() => {
@@ -338,72 +253,59 @@ export default function EditPermutationUI() {
     return () => window.removeEventListener("keydown", handleKey);
   }, [history, redoStack, drafts]); 
   
-  function saveHistory(newDrafts, newEdges) {
-    console.log('[saveHistory] Saving. New drafts count:', newDrafts.length, 'New edges count:', newEdges.length);
-    setHistory(h => [...h, { drafts: drafts, suggestions: editSuggestions }]);
+  function saveHistory(newDraftsData, newEdgesData) {
+    console.log('[saveHistory] Saving. New drafts count:', newDraftsData.length, 'New edges count:', newEdgesData.length);
+    setHistory(h => [...h, { drafts: drafts, suggestions: editSuggestions, draftVectors: draftVectorsMap }]);
     setRedoStack([]); 
-    setDrafts(newDrafts);
-    setGraphEdges(e => [...e, ...newEdges]);
+    setDrafts(newDraftsData);
+    setGraphEdges(e => [...e, ...newEdgesData]);
   }
 
   function undo() {
     console.log('[undo] Attempting undo.');
-    if (!history.length) {
-      console.log('[undo] No history to undo.');
-      return;
-    }
-    
-    setRedoStack(r => [{ drafts: drafts, suggestions: editSuggestions }, ...r]);
-    
+    if (!history.length) { console.log('[undo] No history to undo.'); return; }
+    setRedoStack(r => [{ drafts: drafts, suggestions: editSuggestions, draftVectors: draftVectorsMap }, ...r]);
     const prevState = history[history.length - 1];
     setHistory(h => h.slice(0, -1));
-    
     setDrafts(prevState.drafts);
     setEditSuggestions(prevState.suggestions); 
-    
-    setSelectedDraft(prevState.drafts[0] || []);
-    setCurrentEditText(charArrayToString(prevState.drafts[0] || []));
-    
+    setDraftVectorsMap(prevState.draftVectors || new Map());
+    const newSelectedDraft = prevState.drafts[0] || [];
+    setSelectedDraft(newSelectedDraft);
+    setCurrentEditText(charArrayToString(newSelectedDraft));
     if (showSuggestionsDialog && currentSuggestionViewIndex >= prevState.suggestions.length) {
-        if (prevState.suggestions.length === 0) {
-            setShowSuggestionsDialog(false);
-        }
+        if (prevState.suggestions.length === 0) setShowSuggestionsDialog(false);
         setCurrentSuggestionViewIndex(Math.max(0, prevState.suggestions.length - 1));
     }
-    
-    console.log('[undo] Undone. prev draft text:', charArrayToString(prevState.drafts[0] || []));
+    console.log('[undo] Undone. prev draft text:', charArrayToString(newSelectedDraft));
     console.log('[undo] Reverted suggestions count to:', prevState.suggestions.length);
   }
 
   function redo() {
     console.log('[redo] Attempting redo.');
-    if (!redoStack.length) {
-      console.log('[redo] No redo stack.');
-      return;
-    }
-
-    setHistory(h => [...h, { drafts: drafts, suggestions: editSuggestions }]);
-    
+    if (!redoStack.length) { console.log('[redo] No redo stack.'); return; }
+    setHistory(h => [...h, { drafts: drafts, suggestions: editSuggestions, draftVectors: draftVectorsMap }]);
     const nextState = redoStack[0];
     setRedoStack(r => r.slice(1));
-    
     setDrafts(nextState.drafts);
-    setEditSuggestions(nextState.suggestions); 
-    
-    setSelectedDraft(nextState.drafts[0] || []);
-    setCurrentEditText(charArrayToString(nextState.drafts[0] || []));
-    console.log('[redo] Redone. next draft text:', charArrayToString(nextState.drafts[0] || []));
+    setEditSuggestions(nextState.suggestions);
+    setDraftVectorsMap(nextState.draftVectors || new Map());
+    const newSelectedDraft = nextState.drafts[0] || [];
+    setSelectedDraft(newSelectedDraft);
+    setCurrentEditText(charArrayToString(newSelectedDraft));
+    console.log('[redo] Redone. next draft text:', charArrayToString(newSelectedDraft));
     console.log('[redo] Restored suggestions count to:', nextState.suggestions.length);
   }
 
   function initializeDraft() {
     console.log('[initializeDraft] Called. defaultDraft:', `"${defaultDraft}"`);
-    if (!defaultDraft.trim()) {
-      console.log('[initializeDraft] Default draft is empty or whitespace.');
-      return;
-    }
+    if (!defaultDraft.trim()) { console.log('[initializeDraft] Default draft is empty or whitespace.'); return; }
     const arr = Array.from(defaultDraft).map(ch => ({ id: generateCharId(), char: ch }));
     console.log('[initializeDraft] Initialized char array:', arr.map(c => c.char).join(""));
+    
+    const initialDraftKey = getDraftKey(arr);
+    setDraftVectorsMap(new Map([[initialDraftKey, [1]]])); // Rule 1 for draft vector
+
     setDrafts([arr]);
     setSelectedDraft(arr);
     setCurrentEditText(defaultDraft);
@@ -411,14 +313,18 @@ export default function EditPermutationUI() {
     setHistory([]); 
     setRedoStack([]); 
     setConditionParts([]);
-    setEditSuggestions([]); 
+    setEditSuggestions([]);
     editSuggestionCounterRef.current = 1; 
     setShowSuggestionsDialog(false); 
   }
 
   function applyEdit() {
     console.log('--- [applyEdit] Start ---');
-    const initialSelectedDraftForSuggestion = JSON.parse(JSON.stringify(selectedDraft)); 
+    if (!selectedDraft || !Array.isArray(selectedDraft)) {
+        console.error("Selected draft is invalid or not an array", selectedDraft);
+        return;
+    }
+    const initialSelectedCharArrForSuggestion = JSON.parse(JSON.stringify(selectedDraft)); 
     const conditionIdsForSuggestion = new Set(conditionParts.flatMap(part => part.ids)); 
 
     const oldArr = selectedDraft; 
@@ -429,31 +335,18 @@ export default function EditPermutationUI() {
     
     let initialPrefixLen = 0;
     const maxPref = Math.min(oldText.length, newText.length);
-    while (initialPrefixLen < maxPref && oldText[initialPrefixLen] === newText[initialPrefixLen]) {
-      initialPrefixLen++;
-    }
+    while (initialPrefixLen < maxPref && oldText[initialPrefixLen] === newText[initialPrefixLen]) initialPrefixLen++;
     let initialSuffixLen = 0;
-    let olFull = oldText.length;
-    let nlFull = newText.length;
-    while (initialSuffixLen < Math.min(olFull - initialPrefixLen, nlFull - initialPrefixLen) &&
-      oldText[olFull - 1 - initialSuffixLen] === newText[nlFull - 1 - initialSuffixLen]) {
-      initialSuffixLen++;
-    }
-    let prefixLen = initialPrefixLen;
-    let suffixLen = initialSuffixLen;
+    let olFull = oldText.length; let nlFull = newText.length;
+    while (initialSuffixLen < Math.min(olFull - initialPrefixLen, nlFull - initialPrefixLen) && oldText[olFull - 1 - initialSuffixLen] === newText[nlFull - 1 - initialSuffixLen]) initialSuffixLen++;
+    let prefixLen = initialPrefixLen; let suffixLen = initialSuffixLen;
     console.log('[applyEdit] Diffing (Initial): initialPrefixLen:', initialPrefixLen, 'initialSuffixLen:', initialSuffixLen);
     const baseWithInitialAffixes = newText.slice(initialPrefixLen, newText.length - suffixLen);
     console.log('[applyEdit] Diffing (Initial): baseWithInitialAffixes:', `"${baseWithInitialAffixes}"`);
-    if (initialPrefixLen > 0 &&
-      oldText.charAt(initialPrefixLen - 1) === ' ' &&
-      newText.charAt(initialPrefixLen - 1) === ' ') {
+    if (initialPrefixLen > 0 && oldText.charAt(initialPrefixLen - 1) === ' ' && newText.charAt(initialPrefixLen - 1) === ' ') {
       console.log('[applyEdit] Diffing Heuristic: Initial prefix ends on a common space. Checking shorter prefix.');
-      const shorterPrefixLen = initialPrefixLen - 1;
-      let shorterSuffixLen = 0;
-      while (shorterSuffixLen < Math.min(olFull - shorterPrefixLen, nlFull - shorterPrefixLen) &&
-        oldText[olFull - 1 - shorterSuffixLen] === newText[nlFull - 1 - shorterSuffixLen]) {
-        shorterSuffixLen++;
-      }
+      const shorterPrefixLen = initialPrefixLen - 1; let shorterSuffixLen = 0;
+      while (shorterSuffixLen < Math.min(olFull - shorterPrefixLen, nlFull - shorterPrefixLen) && oldText[olFull - 1 - shorterSuffixLen] === newText[nlFull - 1 - shorterSuffixLen]) shorterSuffixLen++;
       const baseWithShorterPrefix = newText.slice(shorterPrefixLen, newText.length - shorterSuffixLen);
       console.log('[applyEdit] Diffing Heuristic: Shorter prefix candidate:', shorterPrefixLen, 'Shorter suffix candidate:', shorterSuffixLen);
       console.log('[applyEdit] Diffing Heuristic: baseWithShorterPrefix:', `"${baseWithShorterPrefix}"`);
@@ -461,20 +354,14 @@ export default function EditPermutationUI() {
       const shorterBaseHasLeadingSpace = baseWithShorterPrefix.length > 0 && baseWithShorterPrefix.charAt(0) === ' ';
       if (shorterBaseHasLeadingSpace && !originalBaseHadLeadingSpace) {
         console.log("[applyEdit] Diffing Heuristic: Shorter prefix chosen because it makes baseInsertedText start with a space.");
-        prefixLen = shorterPrefixLen;
-        suffixLen = shorterSuffixLen;
-      }
-      else if (shorterBaseHasLeadingSpace && originalBaseHadLeadingSpace && baseWithShorterPrefix.length > baseWithInitialAffixes.length) {
+        prefixLen = shorterPrefixLen; suffixLen = shorterSuffixLen;
+      } else if (shorterBaseHasLeadingSpace && originalBaseHadLeadingSpace && baseWithShorterPrefix.length > baseWithInitialAffixes.length) {
         console.log("[applyEdit] Diffing Heuristic: Shorter prefix chosen because it yields a longer space-prefixed baseInsertedText.");
-        prefixLen = shorterPrefixLen;
-        suffixLen = shorterSuffixLen;
-      }
-      else if (baseWithShorterPrefix.length > 1 && shorterBaseHasLeadingSpace && !baseWithShorterPrefix.endsWith(' ') &&
-        baseWithInitialAffixes.length > 1 && !originalBaseHadLeadingSpace && baseWithInitialAffixes.endsWith(' ')) {
+        prefixLen = shorterPrefixLen; suffixLen = shorterSuffixLen;
+      } else if (baseWithShorterPrefix.length > 1 && shorterBaseHasLeadingSpace && !baseWithShorterPrefix.endsWith(' ') && baseWithInitialAffixes.length > 1 && !originalBaseHadLeadingSpace && baseWithInitialAffixes.endsWith(' ')) {
         if (baseWithShorterPrefix.trim() === baseWithInitialAffixes.trim()) {
           console.warn("[applyEdit] Diffing Heuristic: Correcting 'transposed space' by preferring shorter prefix (e.g., ' c.' over 'c. ').");
-          prefixLen = shorterPrefixLen;
-          suffixLen = shorterSuffixLen;
+          prefixLen = shorterPrefixLen; suffixLen = shorterSuffixLen;
         }
       }
     }
@@ -484,630 +371,416 @@ export default function EditPermutationUI() {
     console.log('[applyEdit] Diffing: removedLen:', removedLen, 'baseInsertedText:', `"${baseInsertedText}"`);
 
     const actualRemovedCharIdsForSuggestion = new Set();
-    if (removedLen > 0) {
-      const removedCharObjects = oldArr.slice(prefixLen, prefixLen + removedLen);
-      removedCharObjects.forEach(c => actualRemovedCharIdsForSuggestion.add(c.id));
-    }
-
+    if (removedLen > 0) oldArr.slice(prefixLen, prefixLen + removedLen).forEach(c => actualRemovedCharIdsForSuggestion.add(c.id));
     const tempNewCharObjectsForSuggestion = [];
 
     const isReplacement = removedLen > 0 && baseInsertedText.length > 0;
     const isSentenceAddition = removedLen === 0 && baseInsertedText.trim().length > 0 && /[.?!;:]$/.test(baseInsertedText.trim());
     console.log('[applyEdit] Type check: isReplacement:', isReplacement, 'isSentenceAddition:', isSentenceAddition);
-    console.log('[applyEdit] baseInsertedText.trim() for sentence check:', `"${baseInsertedText.trim()}"`, 'Regex test result:', /^[^.?!;:]+[.?!;:]$/.test(baseInsertedText.trim()));
     
-    let newDraftsResult = [...drafts]; 
-    let newEdgesResult = [];
+    const E = editSuggestions.length; // Number of edits *before* this one is committed
+
+    // --- Vector Logic: Step 1 - Prepare a temporary map for next state's vectors ---
+    // Rule 2: Append 0 to all existing draft vectors for this generation.
+    const workingDraftVectorsMap = new Map();
+    drafts.forEach(d => { // Iterate current drafts (CharObj[])
+        const key = getDraftKey(d);
+        const currentVector = draftVectorsMap.get(key) || Array(E + 1).fill(0); // Fallback if somehow not in map
+        workingDraftVectorsMap.set(key, [...currentVector, 0]);
+    });
+
+    let newDraftsResult = []; // This will be CharObj[][]
+    let newEdgesResult = [];  // This will be { from: CharObj[], to: CharObj[] }[]
 
     if (isSentenceAddition) {
       console.log('[applyEdit] --- Sentence Addition Path ---');
       const uniquePrecedingContextIds = [...new Set(oldArr.slice(0, prefixLen).map(c => c.id))];
-      console.log('[applyEdit] Sentence Addition: uniquePrecedingContextIds:', uniquePrecedingContextIds);
-      const currentDrafts = drafts; 
-      newDraftsResult = [...currentDrafts]; 
-      newEdgesResult = []; 
-      const seenKeys = new Set(newDraftsResult.map(d => d.map(c => c.id).join(",")));
+      const tempAggregatedNewDrafts = []; 
+      const seenKeysInPath = new Set();
       const textToInsert = baseInsertedText;
-      console.log('[applyEdit] Sentence Addition: textToInsert:', `"${textToInsert}"`);
-      
       const masterInsArr = Array.from(textToInsert).map(ch => {
           const newCharObj = { id: generateCharId(), char: ch };
           tempNewCharObjectsForSuggestion.push(newCharObj); 
           return newCharObj;
       });
-      console.log('[applyEdit] Sentence Addition: masterInsArr:', `"${charArrayToString(masterInsArr)}"`);
-      
-      currentDrafts.forEach((dArr, draftIndex) => {
+
+      drafts.forEach((dArr, draftIndex) => { // dArr is original CharObj[]
+        // --- Full sentence addition logic to determine 'updatedCharArray' from 'dArr' ---
+        // This logic block is directly from the user's provided 'Code.txt' (sources [385]-[430])
+        // with 'updated' renamed to 'updatedCharArray'
+        let updatedCharArray;
+        // --- Start of sentence addition logic from user's code (adapted) ---
         console.log(`[applyEdit] Sentence Addition: Processing draft ${draftIndex}: "${charArrayToString(dArr)}"`);
         const targetIdArr = dArr.map(c => c.id);
         const targetDraftText = charArrayToString(dArr);
         if (conditionParts.length && !conditionParts.every(condObj => idSeqExists(targetIdArr, condObj.ids))) {
-          console.log(`[applyEdit] Sentence Addition: Draft ${draftIndex} skipped due to condition parts.`);
+          console.log(`[applyEdit] Sentence Addition: Draft ${draftIndex} skipped (condition). Will be carried over if unique.`);
+          // Add dArr to tempAggregatedNewDrafts if not already there (for carry-over)
+          const dArrKey = getDraftKey(dArr);
+          if (!seenKeysInPath.has(dArrKey)) {
+              if (!isDraftContentEmpty(dArr)) {
+                  tempAggregatedNewDrafts.push(dArr);
+                  seenKeysInPath.add(dArrKey);
+              }
+          }
           return;
         }
-  
         let anchorIdIndexInDArr = -1;
-        if (uniquePrecedingContextIds.length === 0) {
-          anchorIdIndexInDArr = -2;
-          console.log(`[applyEdit] Sentence Addition: Draft ${draftIndex}: No preceding context, anchorIdIndexInDArr = -2.`);
-        } else {
-          const precedingIdsSet = new Set(uniquePrecedingContextIds);
-          for (let i = targetIdArr.length - 1; i >= 0; i--) {
-            if (precedingIdsSet.has(targetIdArr[i])) {
-              anchorIdIndexInDArr = i;
-              console.log(`[applyEdit] Sentence Addition: Draft ${draftIndex}: Found ID ${targetIdArr[i]} from preceding context at index ${i}. anchorIdIndexInDArr = ${i}.`);
-              break;
-            }
-          }
-        }
-        if (anchorIdIndexInDArr === -1 && uniquePrecedingContextIds.length > 0) {
-          anchorIdIndexInDArr = -2;
-          console.log(`[applyEdit] Sentence Addition: Draft ${draftIndex}: Preceding context IDs specified but not found. anchorIdIndexInDArr set to -2.`);
-        }
-        console.log(`[applyEdit] Sentence Addition: Draft ${draftIndex}: final anchorIdIndexInDArr = ${anchorIdIndexInDArr}.`);
+        if (uniquePrecedingContextIds.length === 0) {anchorIdIndexInDArr = -2;} else { const precedingIdsSet = new Set(uniquePrecedingContextIds); for (let i = targetIdArr.length - 1; i >= 0; i--) { if (precedingIdsSet.has(targetIdArr[i])) { anchorIdIndexInDArr = i; break;}}}
+        if (anchorIdIndexInDArr === -1 && uniquePrecedingContextIds.length > 0) anchorIdIndexInDArr = -2;
         let insertionPointInDArr;
-        if (anchorIdIndexInDArr === -2) {
-          insertionPointInDArr = 0;
-          console.log(`[applyEdit] Sentence Addition: Draft ${draftIndex}: anchorIdIndexInDArr is -2, insertionPointInDArr = 0.`);
-        } else {
-          let effectiveAnchorForSentenceLookup = anchorIdIndexInDArr;
-          console.log(`[applyEdit] Sentence Addition: Draft ${draftIndex}: initial effectiveAnchorForSentenceLookup = ${effectiveAnchorForSentenceLookup}.`);
-          if (anchorIdIndexInDArr >= 0 && anchorIdIndexInDArr < targetDraftText.length) {
-            for (let k = anchorIdIndexInDArr; k >= 0; k--) {
-              const char = targetDraftText.charAt(k);
-              if (/[.?!;:]/.test(char)) {
-                effectiveAnchorForSentenceLookup = k;
-                console.log(`[applyEdit] Sentence Addition: Draft ${draftIndex}: effectiveAnchor found punctuation at k=${k}. Set to ${k}.`);
-                break;
-              }
-              if (!/\s|\n/.test(char)) {
-                effectiveAnchorForSentenceLookup = k;
-                console.log(`[applyEdit] Sentence Addition: Draft ${draftIndex}: effectiveAnchor found non-whitespace char at k=${k}. Set to ${k}.`);
-                break;
-              }
-              if (k === 0) {
-                effectiveAnchorForSentenceLookup = 0;
-                console.log(`[applyEdit] Sentence Addition: Draft ${draftIndex}: effectiveAnchor reached k=0. Set to 0.`);
-              }
-            }
-          }
-          console.log(`[applyEdit] Sentence Addition: Draft ${draftIndex}: final effectiveAnchorForSentenceLookup = ${effectiveAnchorForSentenceLookup}.`);
-          let anchorSegmentText = null;
-          let anchorSegmentEndIndex = -1;
-          const sentenceBoundaryRegex = /[^.?!;:\n]+(?:[.?!;:\n]|$)|[.?!;:\n]/g;
-          let matchBoundary;
-          sentenceBoundaryRegex.lastIndex = 0;
-          console.log(`[applyEdit] Sentence Addition: Draft ${draftIndex}: Starting sentence segmentation for effectiveAnchor ${effectiveAnchorForSentenceLookup} in text "${targetDraftText}"`);
-          while ((matchBoundary = sentenceBoundaryRegex.exec(targetDraftText)) !== null) {
-            const segmentStartIndex = matchBoundary.index;
-            const segmentEndBoundary = matchBoundary.index + matchBoundary[0].length - 1;
-            console.log(`[applyEdit] Sentence Addition: Draft ${draftIndex}: Regex found segment "${matchBoundary[0]}" from ${segmentStartIndex} to ${segmentEndBoundary}`);
-            if (effectiveAnchorForSentenceLookup >= segmentStartIndex && effectiveAnchorForSentenceLookup <= segmentEndBoundary) {
-              anchorSegmentText = matchBoundary[0];
-              anchorSegmentEndIndex = segmentEndBoundary;
-              console.log(`[applyEdit] Sentence Addition: Draft ${draftIndex}: Matched anchor segment "${anchorSegmentText}", ends at ${anchorSegmentEndIndex}.`);
-              break;
-            }
-          }
-          if (anchorSegmentText !== null) {
-            const trimmedSegment = anchorSegmentText.trim().replace(/\n$/, '');
-            const isTrueSentence = /[.?!;:]$/.test(trimmedSegment);
-            console.log(`[applyEdit] Sentence Addition: Draft ${draftIndex}: anchorSegmentText="${anchorSegmentText}", trimmedSegment="${trimmedSegment}", isTrueSentence=${isTrueSentence}`);
-            if (isTrueSentence) {
-              insertionPointInDArr = anchorSegmentEndIndex + 1;
-              console.log(`[applyEdit] Sentence Addition: Draft ${draftIndex}: True sentence. insertionPointInDArr = ${anchorSegmentEndIndex} + 1 = ${insertionPointInDArr}.`);
-            } else {
-              insertionPointInDArr = anchorIdIndexInDArr + 1;
-              console.log(`[applyEdit] Sentence Addition: Draft ${draftIndex}: Not true sentence. insertionPointInDArr = ${anchorIdIndexInDArr} + 1 = ${insertionPointInDArr}.`);
-            }
-          } else {
-            console.log(`[applyEdit] Sentence Addition: Draft ${draftIndex}: No anchor segment text found. Defaulting insertion point.`);
-            insertionPointInDArr = (anchorIdIndexInDArr >= 0 && anchorIdIndexInDArr < targetDraftText.length) ?
-              anchorIdIndexInDArr + 1 : targetDraftText.length;
-            if (insertionPointInDArr > targetDraftText.length) insertionPointInDArr = targetDraftText.length;
-            console.log(`[applyEdit] Sentence Addition: Draft ${draftIndex}: Defaulted insertionPointInDArr = ${insertionPointInDArr}.`);
-          }
-          let originalInsertionPointForNewlineSkip = insertionPointInDArr;
-          while (insertionPointInDArr < targetDraftText.length && targetDraftText.charAt(insertionPointInDArr) === '\n') {
-            insertionPointInDArr++;
-          }
-          if (originalInsertionPointForNewlineSkip !== insertionPointInDArr) {
-            console.log(`[applyEdit] Sentence Addition: Draft ${draftIndex}: Adjusted insertionPointInDArr from ${originalInsertionPointForNewlineSkip} to ${insertionPointInDArr} to skip newlines.`);
-          }
-        }
+        if (anchorIdIndexInDArr === -2) {insertionPointInDArr = 0;} else { let effectiveAnchorForSentenceLookup = anchorIdIndexInDArr; if (anchorIdIndexInDArr >= 0 && anchorIdIndexInDArr < targetDraftText.length) { for (let k = anchorIdIndexInDArr; k >= 0; k--) { const char = targetDraftText.charAt(k); if (/[.?!;:]/.test(char)) { effectiveAnchorForSentenceLookup = k; break; } if (!/\s|\n/.test(char)) { effectiveAnchorForSentenceLookup = k; break; } if (k === 0) effectiveAnchorForSentenceLookup = 0; }} let anchorSegmentText = null; let anchorSegmentEndIndex = -1; const sentenceBoundaryRegex = /[^.?!;:\n]+(?:[.?!;:\n]|$)|[.?!;:\n]/g; let matchBoundary; sentenceBoundaryRegex.lastIndex = 0; while ((matchBoundary = sentenceBoundaryRegex.exec(targetDraftText)) !== null) { const segmentStartIndex = matchBoundary.index; const segmentEndBoundary = matchBoundary.index + matchBoundary[0].length - 1; if (effectiveAnchorForSentenceLookup >= segmentStartIndex && effectiveAnchorForSentenceLookup <= segmentEndBoundary) { anchorSegmentText = matchBoundary[0]; anchorSegmentEndIndex = segmentEndBoundary; break; }} if (anchorSegmentText !== null) { const trimmedSegment = anchorSegmentText.trim().replace(/\n$/, ''); const isTrueSentence = /[.?!;:]$/.test(trimmedSegment); if (isTrueSentence) { insertionPointInDArr = anchorSegmentEndIndex + 1; } else { insertionPointInDArr = anchorIdIndexInDArr + 1; }} else { insertionPointInDArr = (anchorIdIndexInDArr >= 0 && anchorIdIndexInDArr < targetDraftText.length) ? anchorIdIndexInDArr + 1 : targetDraftText.length; if (insertionPointInDArr > targetDraftText.length) insertionPointInDArr = targetDraftText.length; } while (insertionPointInDArr < targetDraftText.length && targetDraftText.charAt(insertionPointInDArr) === '\n') insertionPointInDArr++;}
         let finalInsertionPoint = insertionPointInDArr;
-        console.log(`[applyEdit] Sentence Addition: Draft ${draftIndex}: insertionPointInDArr before space adjustment logic = ${insertionPointInDArr}`);
-        if (insertionPointInDArr < targetDraftText.length) {
-          console.log(`[applyEdit] Sentence Addition: Draft ${draftIndex}: char at insertionPointInDArr: "${targetDraftText.charAt(insertionPointInDArr)}" (code: ${targetDraftText.charCodeAt(insertionPointInDArr)})`);
-        } else {
-          console.log(`[applyEdit] Sentence Addition: Draft ${draftIndex}: insertionPointInDArr is at or beyond end of targetDraftText.`);
-        }
-        console.log(`[applyEdit] Sentence Addition: Draft ${draftIndex}: baseInsertedText for space check: "${baseInsertedText}" (starts with space: ${baseInsertedText.length > 0 && baseInsertedText.charAt(0) === ' '})`);
-        if (insertionPointInDArr < targetDraftText.length &&
-          targetDraftText.charAt(insertionPointInDArr) === ' ' &&
-          (baseInsertedText.length === 0 || (baseInsertedText.length > 0 && baseInsertedText.charAt(0) !== ' '))
-        ) {
-          console.log(`[applyEdit] Sentence Addition: Draft ${draftIndex}: Adjusting finalInsertionPoint. It was a space, and baseInsertedText does not start with one (or is empty).`);
-          finalInsertionPoint = insertionPointInDArr + 1;
-        }
-        console.log(`[applyEdit] Sentence Addition: Draft ${draftIndex}: finalInsertionPoint for slicing = ${finalInsertionPoint}.`);
-        const before = dArr.slice(0, finalInsertionPoint);
-        const after = dArr.slice(finalInsertionPoint);
-        const insArr = masterInsArr;
-        console.log(`[applyEdit] Sentence Addition: Draft ${draftIndex}: before text: "${charArrayToString(before)}"`);
-        console.log(`[applyEdit] Sentence Addition: Draft ${draftIndex}: insArr text: "${charArrayToString(insArr)}"`);
-        console.log(`[applyEdit] Sentence Addition: Draft ${draftIndex}: after text: "${charArrayToString(after)}"`);
-        const updated = [...before, ...insArr, ...after];
-        console.log(`[applyEdit] Sentence Addition: Draft ${draftIndex}: updated text: "${charArrayToString(updated)}"`);
-        const key = updated.map(c => c.id).join(",");
-        if (!seenKeys.has(key)) {
-          if (!isDraftContentEmpty(updated)) {
-            seenKeys.add(key);
-            newDraftsResult.push(updated);
-            newEdgesResult.push({ from: dArr, to: updated });
-            console.log(`[applyEdit] Sentence Addition: Draft ${draftIndex}: Added new unique draft and edge.`);
-          } else {
-            console.log(`[applyEdit] Sentence Addition: Draft ${draftIndex}: Updated draft is empty, not adding.`);
-          }
-        } else {
-          console.log(`[applyEdit] Sentence Addition: Draft ${draftIndex}: Updated draft already seen, not adding.`);
+        if (insertionPointInDArr < targetDraftText.length && targetDraftText.charAt(insertionPointInDArr) === ' ' && (baseInsertedText.length === 0 || (baseInsertedText.length > 0 && baseInsertedText.charAt(0) !== ' '))) finalInsertionPoint = insertionPointInDArr + 1;
+        const before = dArr.slice(0, finalInsertionPoint); const after = dArr.slice(finalInsertionPoint); const insArr = masterInsArr;
+        updatedCharArray = [...before, ...insArr, ...after];
+        // --- End of sentence addition logic ---
+
+        const dArrKey = getDraftKey(dArr);
+        const updatedKey = getDraftKey(updatedCharArray);
+
+        if (!isDraftContentEmpty(updatedCharArray)) {
+            const parentExtendedVector = workingDraftVectorsMap.get(dArrKey);
+            if (parentExtendedVector) { // Should always exist due to Rule 2 pass
+                const childVector = [...parentExtendedVector]; 
+                childVector[childVector.length - 1] = 1; // Rule 3
+                workingDraftVectorsMap.set(updatedKey, childVector); // Update vector for this new child
+
+                if (!seenKeysInPath.has(updatedKey)) {
+                    seenKeysInPath.add(updatedKey);
+                    tempAggregatedNewDrafts.push(updatedCharArray);
+                    newEdgesResult.push({ from: dArr, to: updatedCharArray });
+                } else { /* Already added a draft with this content */ }
+            } else { console.warn("SEN-ADD: Parent vector not found for key:", dArrKey); }
+        } else { // If updated is empty, original dArr might be carried over
+             if (!seenKeysInPath.has(dArrKey) && !isDraftContentEmpty(dArr)) {
+                seenKeysInPath.add(dArrKey);
+                tempAggregatedNewDrafts.push(dArr); // Vector for this is already (...,0) in workingDraftVectorsMap
+            }
         }
       });
-      // saveHistory is called AFTER the loop and AFTER newDraftsResult/newEdgesResult are finalized for this path
-      // The setSelectedDraft/setCurrentEditText logic will also be after saveHistory call
-    } else { 
-        console.log('[applyEdit] --- General Path (Not Sentence Addition) ---');
-        const autoSpecs = getAutoConditions(oldArr, prefixLen, removedLen);
-        console.log('[applyEdit] General Path: autoSpecs:', autoSpecs);
-        const currentDrafts = drafts; 
-        newDraftsResult = [...currentDrafts]; 
-        newEdgesResult = []; 
-        const seen = new Set(newDraftsResult.map(d => d.map(c => c.id).join(",")));
+       // Ensure all original drafts that were not processed (e.g., conditions failed)
+       // are added to tempAggregatedNewDrafts if not already there, to be carried over.
+       // Their vectors are already (...0) in workingDraftVectorsMap.
+      drafts.forEach(dArr => {
+          const key = getDraftKey(dArr);
+          if (!seenKeysInPath.has(key) && !isDraftContentEmpty(dArr)) {
+              tempAggregatedNewDrafts.push(dArr);
+              seenKeysInPath.add(key);
+          }
+      });
+      newDraftsResult = tempAggregatedNewDrafts;
 
-        const generalInsArr = Array.from(baseInsertedText).map(ch => {
-            const newCharObj = { id: generateCharId(), char: ch };
-            tempNewCharObjectsForSuggestion.push(newCharObj); 
-            return newCharObj;
-        });
+    } else { // General Replacement/Insertion Path
+      console.log('[applyEdit] --- General Path (Not Sentence Addition) ---');
+      const autoSpecs = getAutoConditions(oldArr, prefixLen, removedLen);
+      const tempAggregatedNewDrafts = [];
+      const seenKeysInPath = new Set();
+      
+      drafts.forEach(dArr => { // dArr is original CharObj[]
+        let updatedCharArray = [...dArr]; 
+        const idArr = dArr.map(c => c.id);
+        let wasModifiedAsChild = false; // Track if Rule 3 applies
 
-        for (let dArr of currentDrafts) {
-          let currentDraftTextForLog = charArrayToString(dArr);
-          console.log(`[applyEdit] General Path: Processing draft: "${currentDraftTextForLog}"`);
-          let updated = [...dArr];
-          const idArr = dArr.map(c => c.id);
-          if (conditionParts.length && !conditionParts.every(condObj => idSeqExists(idArr, condObj.ids))) {
-            console.log(`[applyEdit] General Path: Draft "${currentDraftTextForLog}" skipped due to condition parts.`);
-            continue;
-          }
-          if (isReplacement) {
-            console.log(`[applyEdit] General Path: Replacement case for draft "${currentDraftTextForLog}"`);
-            const specForReplacement = autoSpecs.find(s => s.segmentIds && findSegmentIndex(idArr, s.segmentIds) !== -1) || autoSpecs[0];
-            if (!specForReplacement || !specForReplacement.segmentIds) { 
-              console.log(`[applyEdit] General Path: No suitable autoSpec found or spec is malformed for replacement in draft "${currentDraftTextForLog}". Skipping.`);
-              continue;
+        if (conditionParts.length && !conditionParts.every(condObj => idSeqExists(idArr, condObj.ids))) {
+          console.log(`[applyEdit] General Path: Draft "${charArrayToString(dArr)}" skipped (condition). Will be carried over.`);
+        } else {
+            // --- Full general path logic from user's code (sources [447]-[464]) ---
+            // This operates on `updatedCharArray` iteratively for specs.
+            // `baseInsertedText` is used to generate `insArr` within the loop.
+            // --- Start of general path logic (adapted) ---
+            if (isReplacement) {
+                const specForReplacement = autoSpecs.find(s => s.segmentIds && findSegmentIndex(idArr, s.segmentIds) !== -1) || autoSpecs[0];
+                if (specForReplacement && specForReplacement.segmentIds) {
+                    const { segmentIds } = specForReplacement;
+                    const pos = findSegmentIndex(idArr, segmentIds); // Use original idArr for pos
+                    if (pos >= 0) {
+                        const currentRemovedLen = segmentIds.length;
+                        const before = dArr.slice(0, pos); const after = dArr.slice(pos + currentRemovedLen);
+                        const insArr = Array.from(baseInsertedText).map(ch => {
+                            const newCO = { id: generateCharId(), char: ch }; 
+                            tempNewCharObjectsForSuggestion.push(newCO); return newCO;
+                        });
+                        updatedCharArray = [...before, ...insArr, ...after];
+                        wasModifiedAsChild = true;
+                    }
+                }
+            } else { // Insert/Delete
+                for (let spec of autoSpecs) {
+                    if (!spec.segmentIds) continue;
+                    const currentIdArrForSpec = updatedCharArray.map(c=>c.id); // Use current state of updatedCharArray
+                    const pos = findSegmentIndex(currentIdArrForSpec, spec.segmentIds);
+                    if (pos >= 0) {
+                        if (spec.type === 'remove') {
+                            updatedCharArray = [...updatedCharArray.slice(0, pos), ...updatedCharArray.slice(pos + spec.segmentIds.length)];
+                            wasModifiedAsChild = true;
+                        } else { // insert
+                            const insArr = Array.from(baseInsertedText).map(ch => {
+                                const newCO = { id: generateCharId(), char: ch }; 
+                                tempNewCharObjectsForSuggestion.push(newCO); return newCO;
+                            });
+                            const insPos = pos + spec.relOffset;
+                            updatedCharArray = [...updatedCharArray.slice(0, insPos), ...insArr, ...updatedCharArray.slice(insPos)];
+                            wasModifiedAsChild = true;
+                        }
+                    }
+                }
             }
-            const { segmentIds } = specForReplacement;
-            console.log(`[applyEdit] General Path: Replacement autoSpec segmentIds:`, segmentIds);
-            const pos = findSegmentIndex(idArr, segmentIds);
-            console.log(`[applyEdit] General Path: Replacement pos: ${pos}`);
-            if (pos < 0) {
-              console.log(`[applyEdit] General Path: Replacement segment not found in draft "${currentDraftTextForLog}". Skipping.`);
-              continue;
-            }
-            const currentRemovedLen = segmentIds.length;
-            const before = updated.slice(0, pos); 
-            const after = updated.slice(pos + currentRemovedLen);
-            console.log(`[applyEdit] General Path: Replacement before: "${charArrayToString(before)}", insArr: "${charArrayToString(generalInsArr)}", after: "${charArrayToString(after)}"`);
-            updated = [...before, ...generalInsArr, ...after];
-          } else {
-            console.log(`[applyEdit] General Path: Insert/Delete case for draft "${currentDraftTextForLog}"`);
-            for (let spec of autoSpecs) {
-              console.log(`[applyEdit] General Path: Applying spec:`, spec);
-              if (!spec.segmentIds) { 
-                  console.warn(`[applyEdit] General Path: Spec missing segmentIds:`, spec, `in draft "${currentDraftTextForLog}". Skipping this spec.`);
-                  continue;
-              }
-              const pos = findSegmentIndex(updated.map(c=>c.id), spec.segmentIds); 
-              console.log(`[applyEdit] General Path: Spec pos: ${pos}`);
-              if (pos < 0) {
-                console.log(`[applyEdit] General Path: Spec segment not found for spec:`, spec, `in draft "${currentDraftTextForLog}". Skipping this spec.`);
-                continue;
-              }
-              if (spec.type === 'remove') {
-                console.log(`[applyEdit] General Path: Removing segment at pos ${pos}, length ${spec.segmentIds.length}`);
-                updated = [...updated.slice(0, pos), ...updated.slice(pos + spec.segmentIds.length)];
-                console.log(`[applyEdit] General Path: After removal: "${charArrayToString(updated)}"`);
-              } else { 
-                const insPos = pos + spec.relOffset;
-                console.log(`[applyEdit] General Path: Inserting at insPos ${insPos} (pos ${pos} + relOffset ${spec.relOffset}). insArr: "${charArrayToString(generalInsArr)}"`);
-                updated = [...updated.slice(0, insPos), ...generalInsArr, ...updated.slice(insPos)];
-                console.log(`[applyEdit] General Path: After insertion: "${charArrayToString(updated)}"`);
-              }
-            }
-          }
-    
-          const key = updated.map(c => c.id).join(",");
-          if (!seen.has(key)) {
-            if (!isDraftContentEmpty(updated)) {
-              seen.add(key);
-              newDraftsResult.push(updated);
-              newEdgesResult.push({ from: dArr, to: updated });
-              console.log(`[applyEdit] General Path: Added new unique draft: "${charArrayToString(updated)}"`);
-            } else {
-              console.log(`[applyEdit] General Path: Updated draft is empty, not adding: "${charArrayToString(updated)}"`);
-            }
-          } else {
-            console.log(`[applyEdit] General Path: Updated draft already seen: "${charArrayToString(updated)}"`);
-          }
+            // --- End of general path logic ---
         }
-        // saveHistory is called AFTER the loop and AFTER newDraftsResult/newEdgesResult are finalized for this path
+        
+        const dArrKey = getDraftKey(dArr);
+        const finalCharArrayToPush = (wasModifiedAsChild && !isDraftContentEmpty(updatedCharArray)) ? updatedCharArray : dArr;
+        const finalKey = getDraftKey(finalCharArrayToPush);
+
+        if (!isDraftContentEmpty(finalCharArrayToPush)) {
+            if (!seenKeysInPath.has(finalKey)) {
+                seenKeysInPath.add(finalKey);
+                tempAggregatedNewDrafts.push(finalCharArrayToPush);
+            }
+            // Vector update for the key of the char array that ends up in tempAggregatedNewDrafts
+            const parentExtendedVector = workingDraftVectorsMap.get(dArrKey); // Should exist from Rule 2
+            if (parentExtendedVector) {
+                if (wasModifiedAsChild) {
+                    const childVector = [...parentExtendedVector];
+                    childVector[childVector.length - 1] = 1; // Rule 3
+                    workingDraftVectorsMap.set(finalKey, childVector);
+                    if (dArrKey !== finalKey) workingDraftVectorsMap.delete(dArrKey); // If key changed, old extended vector isn't for this content
+                    newEdgesResult.push({ from: dArr, to: finalCharArrayToPush });
+                } else {
+                    // If not modified as child, its vector is already (...,0) in workingDraftVectorsMap for dArrKey (which is finalKey)
+                    // No change needed to workingDraftVectorsMap if key is dArrKey. If finalKey is different but not child, it's an issue.
+                    // For simplicity, if wasModifiedAsChild is false, we assume finalCharArrayToPush is dArr, and its vector is already correct in workingDraftVectorsMap.
+                }
+            } else { console.warn("GEN-PATH: Parent vector not found for key:", dArrKey); }
+        }
+      });
+       // Ensure all original drafts that were not processed are added to tempAggregatedNewDrafts.
+      drafts.forEach(dArr => {
+          const key = getDraftKey(dArr);
+          if (!seenKeysInPath.has(key) && !isDraftContentEmpty(dArr)) {
+              tempAggregatedNewDrafts.push(dArr); // Vector is already (...,0) in workingDraftVectorsMap
+              seenKeysInPath.add(key);
+          }
+      });
+      newDraftsResult = tempAggregatedNewDrafts;
     }
     
+    const finalValidKeys = new Set(newDraftsResult.map(d => getDraftKey(d)));
+    const prunedDraftVectorsMap = new Map();
+    for (const [key, vector] of workingDraftVectorsMap.entries()) { // Use working map which has all extensions
+        if (finalValidKeys.has(key)) {
+            prunedDraftVectorsMap.set(key, vector);
+        }
+    }
+    setDraftVectorsMap(prunedDraftVectorsMap);
+
     saveHistory(newDraftsResult, newEdgesResult); 
     
     const edgeFromSelected = newEdgesResult.find(edge => edge.from === oldArr);
     if (edgeFromSelected) {
-        setSelectedDraft(edgeFromSelected.to);
+        setSelectedDraft(edgeFromSelected.to); 
         setCurrentEditText(charArrayToString(edgeFromSelected.to));
-        console.log('[applyEdit] Path: Evolution of selected draft found and selected.');
-    } else if (newEdgesResult.length === 1 && !isSentenceAddition) { 
-        setSelectedDraft(newEdgesResult[0].to);
-        setCurrentEditText(charArrayToString(newEdgesResult[0].to));
-        console.log('[applyEdit] Path: Single new edge (not from selected), updated selectedDraft and currentEditText.'); 
-    } else if (isSentenceAddition) {
-        const matchedEdgeSA = newEdgesResult.find(edge => edge.from === oldArr);
-        if (matchedEdgeSA) {
-             setSelectedDraft(matchedEdgeSA.to);
-             setCurrentEditText(charArrayToString(matchedEdgeSA.to));
-             console.log('[applyEdit] Sentence Addition Path: Updated selectedDraft and currentEditText to new version.');
+    } else if (newDraftsResult.length > 0) { // Fallback if selected draft was removed or changed key
+        const newSelected = newDraftsResult.find(d => getDraftKey(d) === getDraftKey(oldArr)); // Try to find by old key (vector changed)
+        if (newSelected) {
+            setSelectedDraft(newSelected);
+            setCurrentEditText(charArrayToString(newSelected));
         } else {
-            setCurrentEditText(charArrayToString(selectedDraft));
-            console.log('[applyEdit] Sentence Addition Path: Selected draft was not directly evolved or no new edge from it. currentEditText reset to selectedDraft.');
+            setSelectedDraft(newDraftsResult[0]); // Default to first
+            setCurrentEditText(charArrayToString(newDraftsResult[0]));
         }
-    }
-     else { 
-        setCurrentEditText(charArrayToString(selectedDraft)); 
-        console.log('[applyEdit] Path: Multiple/no new edges or selected not directly evolved. currentEditText reset/updated based on current selectedDraft state.'); 
+    } else { // No drafts left
+        setSelectedDraft([]);
+        setCurrentEditText("");
     }
 
 
-    let resultingDraftForSuggestion = null; 
+    let resultingDraftCharArrayForSuggestion = null; 
     const finalOriginatingEdge = newEdgesResult.find(edge => edge.from === oldArr); 
-
-    if (finalOriginatingEdge) {
-        resultingDraftForSuggestion = finalOriginatingEdge.to;
-    } else {
-        const prefixChars = oldArr.slice(0, prefixLen);
-        const suffixChars = oldArr.slice(oldArr.length - suffixLen);
-        resultingDraftForSuggestion = [...prefixChars, ...tempNewCharObjectsForSuggestion, ...suffixChars];
-        
-        if (isDraftContentEmpty(resultingDraftForSuggestion)) {
-            console.log('[applyEdit] Suggestion: Resulting draft (manually constructed) is empty.');
-        }
+    if (finalOriginatingEdge) resultingDraftCharArrayForSuggestion = finalOriginatingEdge.to; 
+    else { 
+        const prefixChars = oldArr.slice(0, prefixLen); const suffixChars = oldArr.slice(oldArr.length - suffixLen); 
+        resultingDraftCharArrayForSuggestion = [...prefixChars, ...tempNewCharObjectsForSuggestion, ...suffixChars]; 
+        if (isDraftContentEmpty(resultingDraftCharArrayForSuggestion)) console.log('[applyEdit] Suggestion: Resulting draft (manually constructed) is empty.'); 
     }
-    
-    if (!Array.isArray(resultingDraftForSuggestion)) {
-        console.warn("[applyEdit] resultingDraftForSuggestion was not an array, defaulting to empty array for suggestion.");
-        resultingDraftForSuggestion = [];
-    }
+    if (!Array.isArray(resultingDraftCharArrayForSuggestion)) resultingDraftCharArrayForSuggestion = []; 
 
-    const newSuggestionEntry = {
-        id: editSuggestionCounterRef.current,
-        selectedDraftAtTimeOfEdit: initialSelectedDraftForSuggestion, 
-        resultingDraft: resultingDraftForSuggestion, 
+    const newSuggestionEntry = { 
+        id: editSuggestionCounterRef.current, 
+        selectedDraftAtTimeOfEdit: initialSelectedCharArrForSuggestion, 
+        resultingDraft: resultingDraftCharArrayForSuggestion, 
         removedCharIds: actualRemovedCharIdsForSuggestion, 
         newCharIds: new Set(tempNewCharObjectsForSuggestion.map(o => o.id)), 
         conditionCharIds: conditionIdsForSuggestion, 
+        score: 1 // Edit Score initialized
     };
-
-    setEditSuggestions(prevSuggestions => [...prevSuggestions, newSuggestionEntry]);
-    editSuggestionCounterRef.current += 1;
-    console.log('[applyEdit] New edit suggestion logged:', newSuggestionEntry);
+    setEditSuggestions(prevSuggestions => [...prevSuggestions, newSuggestionEntry]); 
+    editSuggestionCounterRef.current += 1; 
+    console.log('[applyEdit] New edit suggestion logged:', newSuggestionEntry); 
     
-    setConditionParts([]);
-    console.log('--- [applyEdit] End ---');
+    setConditionParts([]); 
+    console.log('--- [applyEdit] End ---'); 
   }
 
-  function saveAllDraftsToFile() {
-    console.log('[saveAllDraftsToFile] Initiated save with char IDs.');
-    if (drafts.length === 0) {
-      alert("No drafts to save!");
-      console.log('[saveAllDraftsToFile] No drafts available to save.');
-      return;
-    }
+  function saveAllDraftsToFile() { 
+    console.log('[saveAllDraftsToFile] Initiated save with char IDs.'); 
+    if (drafts.length === 0) { alert("No drafts to save!"); return; } 
+    let fileContent = `Total Drafts: ${drafts.length}\n\n--- TEXTS ---\n\n`; 
+    drafts.forEach((draftCharObjArray, index) => { 
+      fileContent += `--- DRAFT ${index + 1} ---\n`; 
+      // Display vector for debugging, could be removed for final file
+      const draftKey = getDraftKey(draftCharObjArray);
+      const vector = draftVectorsMap.get(draftKey);
+      fileContent += `Vector: ${vector ? vector.join(',') : 'N/A'}\n`;
 
-    let fileContent = `Total Drafts: ${drafts.length}\n\n`;
-
-    fileContent += "--- TEXTS ---\n\n";
-    drafts.forEach((draftCharObjArray, index) => {
-      fileContent += `--- DRAFT ${index + 1} ---\n`;
-      const text = charArrayToString(draftCharObjArray);
-      const indentedText = text.split('\n').map(line => `      ${line}`).join('\n');
-      fileContent += `Text:\n${indentedText}\n\n`; 
+      const text = charArrayToString(draftCharObjArray); 
+      const indentedText = text.split('\n').map(line => `      ${line}`).join('\n'); 
+      fileContent += `Text:\n${indentedText}\n\n`;  
     });
-    fileContent += "\n--- CHARACTER DETAILS ---\n\n";
-    drafts.forEach((draftCharObjArray, index) => {
-      fileContent += `--- DRAFT ${index + 1} ---\n`;
-      
-      const charDetails = draftCharObjArray.map(charObj => {
-        let displayChar = charObj.char;
-        if (displayChar === '\n') {
-          displayChar = '\\n';
-        } else if (displayChar === '\t') {
-          displayChar = '\\t';
-        } else if (displayChar === '\r') {
-            displayChar = '\\r';
-        } else if (displayChar === "'") { 
-            displayChar = "\\'";
-        } else if (displayChar === "\\") { 
-            displayChar = "\\\\";
-        }
-        return `'${displayChar}'(${charObj.id})`;
-      }).join(''); 
-
-      fileContent += `  ${charDetails}\n\n`; 
+    fileContent += "\n--- CHARACTER DETAILS ---\n\n"; 
+    drafts.forEach((draftCharObjArray, index) => { 
+      fileContent += `--- DRAFT ${index + 1} ---\n`; 
+      const charDetails = draftCharObjArray.map(charObj => { 
+        let displayChar = charObj.char; 
+        if (displayChar === '\n') displayChar = '\\n'; else if (displayChar === '\t') displayChar = '\\t'; else if (displayChar === '\r') displayChar = '\\r'; else if (displayChar === "'") displayChar = "\\'"; else if (displayChar === "\\") displayChar = "\\\\"; 
+        return `'${displayChar}'(${charObj.id})`; 
+      }).join('');  
+      fileContent += `  ${charDetails}\n\n`;  
     });
-    const blob = new Blob([fileContent], { type: 'text/plain;charset=utf-8' });
-    const link = document.createElement('a');
-    link.href = URL.createObjectURL(blob);
-    link.download = 'all_drafts_with_ids_v2.txt';
-
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(link.href);
-
-    console.log('[saveAllDraftsToFile] File download triggered for all_drafts_with_ids_v2.txt.');
+    const blob = new Blob([fileContent], { type: 'text/plain;charset=utf-8' }); 
+    const link = document.createElement('a'); link.href = URL.createObjectURL(blob); link.download = 'all_drafts_with_ids_v2_vectors.txt'; 
+    document.body.appendChild(link); link.click(); document.body.removeChild(link); URL.revokeObjectURL(link.href); 
+    console.log('[saveAllDraftsToFile] File download triggered.'); 
   }
   
-  function handleFileUpload(event) {
-    const file = event.target.files[0];
-    if (!file) {
-        return;
-    }
-    const reader = new FileReader();
-    reader.onload = (e) => {
-        const content = e.target.result;
-        try {
-            const parsedData = parseDraftsFile(content); 
+  function handleFileUpload(event) { 
+    const file = event.target.files[0]; if (!file) return; 
+    const reader = new FileReader(); 
+    reader.onload = (e) => { 
+        const content = e.target.result; 
+        try { 
+            const parsedData = parseDraftsFile(content);  
+            const parsedCharArrays = parsedData.drafts; 
             
-            setDrafts(parsedData.drafts);
-            if (parsedData.maxId >= 0) {
-                globalCharCounter = parsedData.maxId + 1;
+            setDrafts(parsedCharArrays); 
+            if (parsedData.maxId >= 0) globalCharCounter = parsedData.maxId + 1; else globalCharCounter = 0; 
+
+            setHistory([]); setRedoStack([]); 
+            setEditSuggestions([]); editSuggestionCounterRef.current = 1;  
+            setShowSuggestionsDialog(false); 
+
+            const newVectorsMap = new Map();
+            if (parsedCharArrays.length > 0) { 
+                const firstKey = getDraftKey(parsedCharArrays[0]);
+                newVectorsMap.set(firstKey, [1]); 
+                for (let i = 1; i < parsedCharArrays.length; i++) {
+                    const key = getDraftKey(parsedCharArrays[i]);
+                    // For simplicity, non-first drafts from file get a basic vector.
+                    // The length should ideally match E+1 where E is 'number of edits leading to this state'.
+                    // Since E is reset for a new file load, this becomes [0].
+                    newVectorsMap.set(key, [0]); 
+                }
+                setSelectedDraft(parsedCharArrays[0]); 
+                setCurrentEditText(charArrayToString(parsedCharArrays[0])); 
             } else {
-                globalCharCounter = 0;
+                setSelectedDraft([]); setCurrentEditText(""); 
             }
-
-            setHistory([]);
-            setRedoStack([]);
-            setEditSuggestions([]); 
-            editSuggestionCounterRef.current = 1; 
-            setShowSuggestionsDialog(false);
-
-
-            if (parsedData.drafts.length > 0) {
-                setSelectedDraft(parsedData.drafts[0]);
-                setCurrentEditText(charArrayToString(parsedData.drafts[0]));
-            } else {
-                setSelectedDraft([]);
-                setCurrentEditText("");
-            }
-            setConditionParts([]);
-            const newGraphEdges = parsedData.drafts.map(d => ({ from: null, to: d }));
-            setGraphEdges(newGraphEdges);
-
-            alert("Drafts uploaded successfully!");
-        } catch (error) {
-            console.error("Failed to parse uploaded drafts file:", error);
-            alert(`Failed to parse file: ${error.message}`);
+            setDraftVectorsMap(newVectorsMap);
+            setConditionParts([]); 
+            const newGraphEdges = parsedCharArrays.map(d => ({ from: null, to: d })); 
+            setGraphEdges(newGraphEdges); 
+            alert("Drafts uploaded successfully!"); 
+        } catch (error) { 
+            console.error("Failed to parse uploaded drafts file:", error); 
+            alert(`Failed to parse file: ${error.message}`); 
         }
-        if (fileInputRef.current) {
-             fileInputRef.current.value = null;
-        }
+        if (fileInputRef.current) fileInputRef.current.value = null; 
     };
-    reader.readAsText(file);
+    reader.readAsText(file); 
   }
 
-  function handleSelect() {
-    console.log('[handleSelect] MouseUp event triggered.');
-    const area = draftBoxRef.current;
-    if (!area) {
-      console.log('[handleSelect] draftBoxRef is null.');
-      return;
+  function handleSelect() { 
+    console.log('[handleSelect] MouseUp event triggered.'); 
+    const area = draftBoxRef.current; if (!area) return; 
+    const start = area.selectionStart; const end = area.selectionEnd; 
+    if (start == null || end == null || start === end) return; 
+    const multi = window.event.ctrlKey || window.event.metaKey; 
+    const editedText = currentEditText; const oldArr = selectedDraft; 
+    console.log('[handleSelect] multi:', multi, 'editedText:', `"${editedText}"`); 
+    const oldText = charArrayToString(oldArr); 
+    const segText = editedText.slice(start, end); 
+    console.log('[handleSelect] oldText (from selectedDraft):', `"${oldText}"`, 'segText (selected in textarea):', `"${segText}"`); 
+    let segmentIds = []; 
+    if (editedText === oldText) segmentIds = oldArr.slice(start, end).map(c => c.id); 
+    else { 
+      const indices = []; let idx = oldText.indexOf(segText); while (idx !== -1) { indices.push(idx); idx = oldText.indexOf(segText, idx + 1); } 
+      if (indices.length === 0) return; 
+      let bestIdx = indices[0]; let bestDiff = Math.abs(start - bestIdx); 
+      for (let i = 1; i < indices.length; i++) { const diff = Math.abs(start - indices[i]); if (diff < bestDiff) { bestDiff = diff; bestIdx = indices[i]; }} 
+      segmentIds = oldArr.slice(bestIdx, bestIdx + segText.length).map(c => c.id); 
     }
-    const start = area.selectionStart;
-    const end = area.selectionEnd;
-    console.log('[handleSelect] Selection start:', start, 'end:', end);
-    if (start == null || end == null || start === end) {
-      console.log('[handleSelect] No selection or selection is empty.');
-      return;
-    }
-    const multi = window.event.ctrlKey || window.event.metaKey;
-    const editedText = currentEditText;
-    const oldArr = selectedDraft;
-    console.log('[handleSelect] multi:', multi, 'editedText:', `"${editedText}"`);
-    const oldText = charArrayToString(oldArr);
-    const segText = editedText.slice(start, end);
-    console.log('[handleSelect] oldText (from selectedDraft):', `"${oldText}"`, 'segText (selected in textarea):', `"${segText}"`);
-    let segmentIds = [];
-    if (editedText === oldText) {
-      console.log('[handleSelect] editedText matches oldText. Slicing IDs from oldArr directly.');
-      segmentIds = oldArr.slice(start, end).map(c => c.id);
-    } else {
-      console.log('[handleSelect] editedText differs from oldText. Finding segment in oldText.');
-      const indices = [];
-      let idx = oldText.indexOf(segText);
-      while (idx !== -1) {
-        indices.push(idx);
-        idx = oldText.indexOf(segText, idx + 1);
-      }
-      console.log('[handleSelect] Found occurrences of segText in oldText at indices:', indices);
-      if (indices.length === 0) {
-        console.log('[handleSelect] segText not found in oldText. Cannot create condition part.');
-        return;
-      }
-      let bestIdx = indices[0];
-      let bestDiff = Math.abs(start - bestIdx);
-      for (let i = 1; i < indices.length; i++) {
-        const diff = Math.abs(start - indices[i]);
-        if (diff < bestDiff) {
-          bestDiff = diff;
-          bestIdx = indices[i];
-        }
-      }
-      console.log('[handleSelect] Best match index in oldText:', bestIdx, 'with diff:', bestDiff);
-      segmentIds = oldArr.slice(bestIdx, bestIdx + segText.length).map(c => c.id);
-    }
-    if (!segmentIds.length) {
-      console.log('[handleSelect] No segmentIds generated.');
-      return;
-    }
-    console.log('[handleSelect] Generated segmentIds:', segmentIds, 'for segText:', `"${segText}"`);
-    const newConditionPart = { ids: segmentIds, text: segText };
-    setConditionParts(prev => {
-      const newParts = multi ? [...prev, newConditionPart] : [newConditionPart];
-      console.log('[handleSelect] Updated conditionParts:', newParts);
-      return newParts;
-    });
-    area.setSelectionRange(end, end);
+    if (!segmentIds.length) return; 
+    const newConditionPart = { ids: segmentIds, text: segText }; 
+    setConditionParts(prev => multi ? [...prev, newConditionPart] : [newConditionPart]); 
+    area.setSelectionRange(end, end); 
   }
 
-  const getConditionDisplayText = () => {
-    if (!conditionParts.length) {
-      return '(none)';
-    }
-    return conditionParts.map(part => `'${part.text}'`).join(' + ');
+  const getConditionDisplayText = () => { 
+    if (!conditionParts.length) return '(none)'; 
+    return conditionParts.map(part => `'${part.text}'`).join(' + '); 
   };
-
-  return (
+  return ( 
     <div className="p-4 space-y-6 text-gray-800">
       <h1 className="text-2xl font-bold text-center">Welcome to Parallax!</h1>
-
       <div className="space-y-2 max-w-lg mx-auto">
         <label className="block text-center">Initial Draft:</label>
-        <textarea
-          value={defaultDraft}
-          onChange={e => setDefaultDraft(e.target.value)}
-          className="w-full p-2 border rounded"
-          rows="10"
-          placeholder="Type starting text…"
-        />
-        <div className="flex justify-center mt-2">
-          <button
-            onClick={initializeDraft}
-            className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700"
-          >
-            Set Initial Draft
-          </button>
-        </div>
+        <textarea value={defaultDraft} onChange={e => setDefaultDraft(e.target.value)} className="w-full p-2 border rounded" rows="10" placeholder="Type starting text…"/>
+        <div className="flex justify-center mt-2"><button onClick={initializeDraft} className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700">Set Initial Draft</button></div>
       </div>
-      
       <div className="my-4 flex space-x-2 justify-center">
-        <div>
-            <input
-                type="file"
-                accept=".txt"
-                style={{ display: 'none' }}
-                ref={fileInputRef}
-                onChange={handleFileUpload}
-            />
-            <button
-                onClick={() => fileInputRef.current && fileInputRef.current.click()}
-                className="bg-sky-600 text-white px-4 py-2 rounded hover:bg-sky-700"
-            >
-                Upload Drafts File
-            </button>
-        </div>
-        {stringDrafts.length > 0 && (
-            <button
-                onClick={saveAllDraftsToFile}
-                className="bg-purple-600 text-white px-4 py-2 rounded hover:bg-purple-700"
-            >
-                Download All Drafts
-            </button>
-        )}
-         {editSuggestions.length > 0 && (
-          <button
-            onClick={() => {
-              setCurrentSuggestionViewIndex(0); 
-              setShowSuggestionsDialog(true);
-            }}
-            className="bg-yellow-500 text-white px-4 py-2 rounded hover:bg-yellow-600"
-          >
-            View Edit Suggestions ({editSuggestions.length})
-          </button>
-        )}
+        <div><input type="file" accept=".txt" style={{ display: 'none' }} ref={fileInputRef} onChange={handleFileUpload}/><button onClick={() => fileInputRef.current && fileInputRef.current.click()} className="bg-sky-600 text-white px-4 py-2 rounded hover:bg-sky-700">Upload Drafts File</button></div>
+        {drafts.length > 0 && (<button onClick={saveAllDraftsToFile} className="bg-purple-600 text-white px-4 py-2 rounded hover:bg-purple-700">Download All Drafts</button>)}
+        {editSuggestions.length > 0 && (<button onClick={() => { setCurrentSuggestionViewIndex(0); setShowSuggestionsDialog(true); }} className="bg-yellow-500 text-white px-4 py-2 rounded hover:bg-yellow-600">View Edit Suggestions ({editSuggestions.length})</button>)}
       </div>
-
-      {showSuggestionsDialog && editSuggestions.length > 0 && (
-        <SuggestionsDialog
-          suggestions={editSuggestions}
-          currentIndex={currentSuggestionViewIndex}
-          onClose={() => setShowSuggestionsDialog(false)}
-          onNext={() => setCurrentSuggestionViewIndex(prev => Math.min(prev + 1, editSuggestions.length - 1))}
-          onBack={() => setCurrentSuggestionViewIndex(prev => Math.max(prev - 1, 0))}
-        />
-      )}
-
-
-      {stringDrafts.length > 0 && (
+      {showSuggestionsDialog && editSuggestions.length > 0 && (<SuggestionsDialog suggestions={editSuggestions} currentIndex={currentSuggestionViewIndex} onClose={() => setShowSuggestionsDialog(false)} onNext={() => setCurrentSuggestionViewIndex(prev => Math.min(prev + 1, editSuggestions.length - 1))} onBack={() => setCurrentSuggestionViewIndex(prev => Math.max(prev - 1, 0))}/>)}
+      {drafts.length > 0 && (
         <>
           <div className="max-w-6xl mx-auto px-4">
             <div className="flex flex-col lg:flex-row lg:space-x-6 justify-center items-start">
               <div className="lg:flex-1 w-full mb-6 lg:mb-0">
                 <h2 className="text-xl font-semibold text-center mb-2">All Drafts:</h2>
                 <ul className="flex flex-wrap gap-2 justify-center bg-gray-50 p-3 rounded-md shadow max-h-[400px] overflow-y-auto">
-                   {stringDrafts.map((text, i) => (
-                    <li
-                      key={i}
-                      onClick={() => {
-                        console.log(`[DraftClick] Selecting draft index ${i}: "${text}"`);
-                        setSelectedDraft(drafts[i]);
-                        setCurrentEditText(text); setConditionParts([]);
-                      }}
-                      className={`px-2 py-1 rounded cursor-pointer shadow-sm hover:shadow-md transition-shadow ${drafts[i] === selectedDraft ?
-                        'bg-blue-300 text-blue-900' : 'bg-gray-200 hover:bg-gray-300'}`}
-                    >
-                      {text.length > 50 ?
-                        text.substring(0, 47) + "..." : text}
-                    </li>
-                  ))}
+                   {stringDrafts.map((text, i) => {
+                       const draftKey = getDraftKey(drafts[i]);
+                       const vector = draftVectorsMap.get(draftKey);
+                       return (
+                        <li key={draftKey || i} onClick={() => { setSelectedDraft(drafts[i]); setCurrentEditText(text); setConditionParts([]); }} className={`px-2 py-1 rounded cursor-pointer shadow-sm hover:shadow-md transition-shadow ${drafts[i] === selectedDraft ? 'bg-blue-300 text-blue-900' : 'bg-gray-200 hover:bg-gray-300'}`}>
+                          {text.length > 50 ? text.substring(0, 47) + "..." : (text || "(empty)")}
+                          {/* Optionally display vector: <small style={{display: 'block'}}>({vector ? vector.join(',') : 'N/A'})</small> */}
+                        </li>
+                       );
+                   })}
                 </ul>
               </div>
-
              <div className="lg:flex-1 w-full">
-                <h2 className="text-xl font-semibold text-center mb-2">Selected Draft:</h2>
-                <textarea
-                  ref={draftBoxRef}
-                  onMouseUp={handleSelect}
-                  value={currentEditText}
-                  onChange={e => {
-                    setCurrentEditText(e.target.value);
-                  }}
-                  className="w-full p-2 border rounded whitespace-pre-wrap shadow-inner"
-                  rows="10"
-                />
+                <h2 className="text-xl font-semibold text-center mb-2">Selected Draft
+                    {selectedDraft && selectedDraft.length > 0 && draftVectorsMap.has(getDraftKey(selectedDraft)) ? 
+                    ` (Vector: ${draftVectorsMap.get(getDraftKey(selectedDraft)).join(',')})`: ''}
+                </h2>
+                <textarea ref={draftBoxRef} onMouseUp={handleSelect} value={currentEditText} onChange={e => setCurrentEditText(e.target.value)} className="w-full p-2 border rounded whitespace-pre-wrap shadow-inner" rows="10"/>
                 <div className="mt-2 text-center">Conditions: {getConditionDisplayText()}</div>
                 <div className="flex space-x-2 mt-4 justify-center">
-                  <button onClick={applyEdit} className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700">Submit Edit</button>
+                  <button onClick={applyEdit} className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700" disabled={!selectedDraft || selectedDraft.length === 0}>Submit Edit</button>
                   <button onClick={undo} className="bg-gray-200 px-4 py-2 rounded hover:bg-gray-300">Undo</button>
                   <button onClick={redo} className="bg-gray-200 px-4 py-2 rounded hover:bg-gray-300">Redo</button>
                 </div>
               </div>
             </div>
           </div>
-
           <div className="max-w-4xl mx-auto mt-8">
             <h2 className="text-xl font-semibold text-center mb-2">Version Graph:</h2>
-            <VersionGraph drafts={stringDrafts} edges={stringEdges} onNodeClick={text => {
-              const idx = 
-                stringDrafts.indexOf(text);
-              console.log(`[VersionGraph onNodeClick] Clicked node with text: "${text}", found at index: ${idx}`);
-              if (idx >= 0) {
-                setSelectedDraft(drafts[idx]);
-                setCurrentEditText(text);
-              }
-            }} />
+            <VersionGraph drafts={stringDrafts} edges={stringEdges} onNodeClick={text => { const clickedDraftObj = drafts.find(d => charArrayToString(d) === text); if (clickedDraftObj) { setSelectedDraft(clickedDraftObj); setCurrentEditText(text);}}} />
           </div>
         </>
       )}
