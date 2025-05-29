@@ -88,39 +88,31 @@ function getAutoConditions(arr, offset, removedLen) {
   return [{ type: 'insert', segmentIds: segIds, relOffset }];
 }
 
-// NEW function to parse the uploaded drafts file
 function parseDraftsFile(fileContent) {
     const newParsedDrafts = [];
     let maxIdNumber = -1;
-
     const draftSections = fileContent.split("--- DRAFT ");
     draftSections.forEach(section => {
-        if (!section.trim() || !/^\d+ ---/.test(section)) return; 
-
+        if (!section.trim() || !/^\d+ ---/.test(section)) return;
         const lines = section.split('\n');
         let readingCharDetails = false;
         const currentDraftCharObjs = [];
-
         for (const line of lines) {
             if (line.startsWith("Character Details:")) {
                 readingCharDetails = true;
-                continue; 
+                continue;
             }
-
             if (readingCharDetails && line.trim().length > 0) {
-                const parts = line.trim().split(/,\s*/); 
+                const parts = line.trim().split(/,\s*/);
                 for (const part of parts) {
                     const match = part.match(/'(.*?)'\(([^)]+)\)/);
                     if (match) {
                         let char = match[1];
                         const id = match[2];
-
                         if (char === '\\n') char = '\n';
                         else if (char === '\\t') char = '\t';
                         else if (char === '\\r') char = '\r';
-                        
                         currentDraftCharObjs.push({ id, char });
-
                         if (id.startsWith("char-")) {
                             const idNum = parseInt(id.substring(5), 10);
                             if (!isNaN(idNum) && idNum > maxIdNumber) {
@@ -129,14 +121,13 @@ function parseDraftsFile(fileContent) {
                         }
                     }
                 }
-                readingCharDetails = false; 
+                readingCharDetails = false;
             }
         }
         if (currentDraftCharObjs.length > 0) {
             newParsedDrafts.push(currentDraftCharObjs);
         }
     });
-    
     if (newParsedDrafts.length === 0 && fileContent.trim().length > 0) {
         throw new Error("No valid draft character details found in file. Ensure format is correct.");
     }
@@ -153,7 +144,7 @@ export default function EditPermutationUI() {
   const [redoStack, setRedoStack] = useState([]);
   const [graphEdges, setGraphEdges] = useState([]);
   const draftBoxRef = useRef(null);
-  const fileInputRef = useRef(null); 
+  const fileInputRef = useRef(null);
 
   const stringDrafts = drafts.map(arr => charArrayToString(arr));
   const stringEdges = graphEdges.map(({ from, to }) => ({
@@ -274,7 +265,7 @@ export default function EditPermutationUI() {
         prefixLen = shorterPrefixLen;
         suffixLen = shorterSuffixLen;
       }
-      // case (transposed space) 
+      // case (transposed space)
       else if (baseWithShorterPrefix.length > 1 && shorterBaseHasLeadingSpace && !baseWithShorterPrefix.endsWith(' ') &&
         baseWithInitialAffixes.length > 1 && !originalBaseHadLeadingSpace && baseWithInitialAffixes.endsWith(' ')) {
         if (baseWithShorterPrefix.trim() === baseWithInitialAffixes.trim()) {
@@ -324,7 +315,6 @@ export default function EditPermutationUI() {
         console.log(`[applyEdit] Sentence Addition: Processing draft ${draftIndex}: "${charArrayToString(dArr)}"`);
         const targetIdArr = dArr.map(c => c.id);
         const targetDraftText = charArrayToString(dArr);
-
         if (conditionParts.length && !conditionParts.every(condObj => idSeqExists(targetIdArr, condObj.ids))) {
           console.log(`[applyEdit] Sentence Addition: Draft ${draftIndex} skipped due to condition parts.`);
           return;
@@ -618,10 +608,10 @@ export default function EditPermutationUI() {
             const parsedData = parseDraftsFile(content); 
             
             setDrafts(parsedData.drafts);
-            if (parsedData.maxId >= 0) { 
+            if (parsedData.maxId >= 0) {
                 globalCharCounter = parsedData.maxId + 1;
             } else {
-                globalCharCounter = 0; 
+                globalCharCounter = 0;
             }
 
             setHistory([]);
@@ -771,48 +761,53 @@ export default function EditPermutationUI() {
 
       {stringDrafts.length > 0 && (
         <>
-          <div className="max-w-2xl mx-auto"> {/* Adjusted width for better list display */}
-            <h2 className="text-xl font-semibold text-center">All Drafts:</h2>
-            <ul className="flex flex-wrap gap-2 mt-2 justify-center">
-              {stringDrafts.map((text, i) => (
-                <li
-                  key={i}
-                  onClick={() => {
-                    console.log(`[DraftClick] Selecting draft index ${i}: "${text}"`);
-                    setSelectedDraft(drafts[i]);
-                    setCurrentEditText(text); setConditionParts([]);
-                  }}
-                  className={`px-2 py-1 rounded cursor-pointer ${drafts[i] === selectedDraft ?
-                    'bg-blue-200' : 'bg-gray-100'}`}
-                >
-                  {text.length > 50 ? text.substring(0, 47) + "..." : text}
-                </li>
-              ))}
-            </ul>
-          </div>
+          <div className="flex flex-col lg:flex-row lg:space-x-6 justify-around items-start px-4">
+            {/* All Drafts Section */}
+            <div className="lg:flex-1 w-full lg:max-w-xl mb-6 lg:mb-0">
+              <h2 className="text-xl font-semibold text-center mb-2">All Drafts:</h2>
+              <ul className="flex flex-wrap gap-2 justify-center bg-gray-50 p-3 rounded-md shadow">
+                {stringDrafts.map((text, i) => (
+                  <li
+                    key={i}
+                    onClick={() => {
+                      console.log(`[DraftClick] Selecting draft index ${i}: "${text}"`);
+                      setSelectedDraft(drafts[i]);
+                      setCurrentEditText(text); setConditionParts([]);
+                    }}
+                    className={`px-2 py-1 rounded cursor-pointer shadow-sm hover:shadow-md transition-shadow ${drafts[i] === selectedDraft ?
+                      'bg-blue-300 text-blue-900' : 'bg-gray-200 hover:bg-gray-300'}`}
+                  >
+                    {text.length > 50 ? text.substring(0, 47) + "..." : text}
+                  </li>
+                ))}
+              </ul>
+            </div>
 
-          <div className="max-w-lg mx-auto">
-            <h2 className="text-xl font-semibold text-center">Selected Draft:</h2>
-            <textarea
-              ref={draftBoxRef}
-              onMouseUp={handleSelect}
-              value={currentEditText}
-              onChange={e => {
-                setCurrentEditText(e.target.value);
-              }}
-              className="w-full p-2 border rounded whitespace-pre-wrap"
-              rows="10"
-            />
-            <div className="mt-2 text-center">Conditions: {getConditionDisplayText()}</div>
-            <div className="flex space-x-2 mt-4 justify-center">
-              <button onClick={applyEdit} className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700">Submit Edit</button>
-              <button onClick={undo} className="bg-gray-200 px-4 py-2 rounded hover:bg-gray-300">Undo</button>
-              <button onClick={redo} className="bg-gray-200 px-4 py-2 rounded hover:bg-gray-300">Redo</button>
+            {/* Selected Draft Section */}
+            <div className="lg:flex-1 w-full lg:max-w-lg">
+              <h2 className="text-xl font-semibold text-center mb-2">Selected Draft:</h2>
+              <textarea
+                ref={draftBoxRef}
+                onMouseUp={handleSelect}
+                value={currentEditText}
+                onChange={e => {
+                  setCurrentEditText(e.target.value);
+                }}
+                className="w-full p-2 border rounded whitespace-pre-wrap shadow-inner"
+                rows="10"
+              />
+              <div className="mt-2 text-center">Conditions: {getConditionDisplayText()}</div>
+              <div className="flex space-x-2 mt-4 justify-center">
+                <button onClick={applyEdit} className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700">Submit Edit</button>
+                <button onClick={undo} className="bg-gray-200 px-4 py-2 rounded hover:bg-gray-300">Undo</button>
+                <button onClick={redo} className="bg-gray-200 px-4 py-2 rounded hover:bg-gray-300">Redo</button>
+              </div>
             </div>
           </div>
 
-          <div className="max-w-4xl mx-auto"> {/* Wider for graph if needed */}
-            <h2 className="text-xl font-semibold text-center">Version Graph:</h2>
+          {/* Version Graph Section */}
+          <div className="max-w-4xl mx-auto mt-8">
+            <h2 className="text-xl font-semibold text-center mb-2">Version Graph:</h2>
             <VersionGraph drafts={stringDrafts} edges={stringEdges} onNodeClick={text => {
               const idx = stringDrafts.indexOf(text);
               console.log(`[VersionGraph onNodeClick] Clicked node with text: "${text}", found at index: ${idx}`);
