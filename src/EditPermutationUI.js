@@ -88,87 +88,100 @@ function getAutoConditions(arr, offset, removedLen) {
   return [{ type: 'insert', segmentIds: segIds, relOffset }];
 }
 
-// MODIFIED function to parse the uploaded drafts file with new char detail format
+// MODIFIED function to parse the uploaded drafts file with new two-section format
 function parseDraftsFile(fileContent) {
-    console.log("[parseDraftsFile] Starting to parse file content (new format).");
+    console.log("[parseDraftsFile] Starting to parse file content (two-section format).");
     const newParsedDrafts = [];
     let maxIdNumber = -1;
 
-    const draftSections = fileContent.split("--- DRAFT ");
-    draftSections.forEach((section, sectionIndex) => {
-        if (sectionIndex === 0 && !fileContent.trimStart().startsWith("--- DRAFT ")) {
-            return; 
+    const detailsSectionMarker = "--- CHARACTER DETAILS ---";
+    const detailsStartIndex = fileContent.indexOf(detailsSectionMarker);
+
+    if (detailsStartIndex === -1) {
+        throw new Error("File format error: '--- CHARACTER DETAILS ---' section not found.");
+    }
+
+    const detailsContent = fileContent.substring(detailsStartIndex + detailsSectionMarker.length);
+    // Split by "--- DRAFT " to get each draft's character detail block
+    const draftDetailSections = detailsContent.split("--- DRAFT ");
+
+    draftDetailSections.forEach((section, sectionIndex) => {
+        // The first element of split might be empty or content before the first "--- DRAFT " in this section
+        if (sectionIndex === 0) {
+            // If the detailsContent itself doesn't start with "--- DRAFT ", skip the first split part
+            // A more robust way is to check if the section starts with a number and " ---"
+            if (!/^\d+\s*---/.test(section.trimStart())) {
+                 if (section.trim()) {
+                    console.log("[parseDraftsFile] Skipping initial content before first DRAFT in CHARACTER DETAILS section:", section.substring(0,30).replace(/\n/g, "\\n"));
+                 }
+                 return;
+            }
         }
+        
         const sectionTrimmed = section.trimStart();
         if (!sectionTrimmed || !/^\d+\s*---/.test(sectionTrimmed)) {
             if (section.trim()) {
-                 console.warn(`[parseDraftsFile] Skipping malformed or non-draft section: "${section.substring(0, 50).replace(/\n/g, "\\n")}..."`);
+                 console.warn(`[parseDraftsFile] Skipping malformed draft section in CHARACTER DETAILS: "${section.substring(0, 50).replace(/\n/g, "\\n")}..."`);
             }
             return;
         }
-
-        console.log(`[parseDraftsFile] Processing draft section starting with: "${sectionTrimmed.substring(0, 15).replace(/\n/g, "\\n")}..."`);
-        const lines = section.split('\n');
-        let expectCharDetailsNext = false; 
-        const currentDraftCharObjs = [];
-        let charDetailsHeaderFound = false;
-
-        for (const line of lines) {
-            if (line.startsWith("Character Details:")) {
-                expectCharDetailsNext = true;
-                charDetailsHeaderFound = true;
-                console.log("[parseDraftsFile] Found 'Character Details:' header.");
-                continue; 
-            }
-
-            if (expectCharDetailsNext) {
-                const detailsLine = line.trim(); 
-                if (detailsLine.length > 0) { 
-                    console.log("[parseDraftsFile] Parsing character details line:", detailsLine);
-                    // Regex to find individual 'char'(id) parts consecutively
-                    const charDetailRegex = /'((?:\\.|[^'\\])*)'\s*\((char-\d+)\)/g;
-                    let regexMatch;
-                    
-                    while ((regexMatch = charDetailRegex.exec(detailsLine)) !== null) {
-                        let char = regexMatch[1];
-                        const id = regexMatch[2];
-
-                        if (char === '\\n') char = '\n';
-                        else if (char === '\\t') char = '\t';
-                        else if (char === '\\r') char = '\r';
-                        else if (char === '\\\\') char = '\\'; 
-                        else if (char === "\\'") char = "'";   
-
-                        if (char === ',') {
-                            console.log(`[parseDraftsFile] Parsed a COMMA character: char='${char}', id=${id}`);
-                        }
-                        
-                        currentDraftCharObjs.push({ id, char });
-
-                        if (id.startsWith("char-")) {
-                            const idNum = parseInt(id.substring(5), 10);
-                            if (!isNaN(idNum) && idNum > maxIdNumber) {
-                                maxIdNumber = idNum;
-                            }
-                        }
-                    }
-                }
-                expectCharDetailsNext = false; 
-            }
-        } 
         
-        if (charDetailsHeaderFound) { 
-            newParsedDrafts.push(currentDraftCharObjs);
-            if (currentDraftCharObjs.length > 0) {
-                console.log(`[parseDraftsFile] Added draft with ${currentDraftCharObjs.length} characters.`);
-            } else {
-                console.warn("[parseDraftsFile] Added an empty draft (Character Details header was present but no valid characters followed or details were empty).");
+        console.log(`[parseDraftsFile] Processing CHARACTER DETAILS for draft section: "${sectionTrimmed.substring(0, 15).replace(/\n/g, "\\n")}..."`);
+        const lines = section.split('\n');
+        const currentDraftCharObjs = [];
+        let actualDetailsLine = null;
+
+        // Find the line with character details (it should be indented and start with a quote)
+        // The first line of 'sectionTrimmed' will be like "1 ---"
+        for (let i = 1; i < lines.length; i++) { // Start from 1 to skip the "X ---" header part
+            const lineContent = lines[i];
+            if (lineContent.startsWith("  '") && lineContent.endsWith(")")) { // Expecting "  'char'(id)..."
+                actualDetailsLine = lineContent.trim();
+                console.log("[parseDraftsFile] Found character details line:", actualDetailsLine);
+                break;
             }
         }
-    }); 
+
+        if (actualDetailsLine) {
+            const charDetailRegex = /'((?:\\.|[^'\\])*)'\s*\((char-\d+)\)/g; // g for global exec
+            let regexMatch;
+            while ((regexMatch = charDetailRegex.exec(actualDetailsLine)) !== null) {
+                let char = regexMatch[1];
+                const id = regexMatch[2];
+
+                if (char === '\\n') char = '\n';
+                else if (char === '\\t') char = '\t';
+                else if (char === '\\r') char = '\r';
+                else if (char === "\\'") char = "'";    // Unescape single quote
+                else if (char === '\\\\') char = '\\';  // Unescape backslash
+                
+                currentDraftCharObjs.push({ id, char });
+
+                if (id.startsWith("char-")) {
+                    const idNum = parseInt(id.substring(5), 10);
+                    if (!isNaN(idNum) && idNum > maxIdNumber) {
+                        maxIdNumber = idNum;
+                    }
+                }
+            }
+        }
+        
+        // Add draft if char objects were found, or if an empty details line was explicitly found for a draft.
+        // This logic might need refinement if empty drafts need to be strictly preserved based on DRAFT headers.
+        if (actualDetailsLine !== null) { // A details line was expected and processed (even if it yielded no chars)
+            newParsedDrafts.push(currentDraftCharObjs);
+             if (currentDraftCharObjs.length > 0) {
+                console.log(`[parseDraftsFile] Added draft with ${currentDraftCharObjs.length} characters.`);
+            } else {
+                 console.warn("[parseDraftsFile] Added an empty draft (character details line was present but parsed no valid characters).");
+            }
+        } else if (sectionTrimmed.length > 0) { // If the section had content but no valid details line
+            console.warn(`[parseDraftsFile] No valid character details line found for DRAFT section starting with: ${sectionTrimmed.substring(0,15).replace(/\n/g,"\\n")}`);
+        }
+    });
     
-    if (newParsedDrafts.length === 0 && fileContent.trim().length > 0 && fileContent.includes("--- DRAFT ")) {
-        console.warn("[parseDraftsFile] File seemed to contain draft structures, but no drafts were successfully parsed.");
+    if (newParsedDrafts.length === 0 && fileContent.includes("--- CHARACTER DETAILS ---")) {
+        console.warn("[parseDraftsFile] CHARACTER DETAILS section found, but no drafts were successfully parsed from it.");
     }
     console.log(`[parseDraftsFile] Finished parsing. Found ${newParsedDrafts.length} drafts. Max ID num: ${maxIdNumber}`);
     return { drafts: newParsedDrafts, maxId: maxIdNumber };
@@ -591,7 +604,7 @@ export default function EditPermutationUI() {
     console.log('--- [applyEdit] End ---');
   }
 
-  // Function to save all drafts with character IDs
+  // MODIFIED saveAllDraftsToFile function
   function saveAllDraftsToFile() {
     console.log('[saveAllDraftsToFile] Initiated save with char IDs.');
     if (drafts.length === 0) {
@@ -602,14 +615,19 @@ export default function EditPermutationUI() {
 
     let fileContent = `Total Drafts: ${drafts.length}\n\n`;
 
+    fileContent += "--- TEXTS ---\n\n";
     drafts.forEach((draftCharObjArray, index) => {
       fileContent += `--- DRAFT ${index + 1} ---\n`;
       const text = charArrayToString(draftCharObjArray);
       const indentedText = text.split('\n').map(line => `      ${line}`).join('\n');
-      fileContent += `Text:\n${indentedText}\n`;
-      fileContent += `Character Details:\n  `; // Start the line for char details with an indent
+      fileContent += `Text:\n${indentedText}\n\n`; // Added extra newline for spacing
+    });
+
+    fileContent += "\n--- CHARACTER DETAILS ---\n\n";
+    drafts.forEach((draftCharObjArray, index) => {
+      fileContent += `--- DRAFT ${index + 1} ---\n`;
+      // Removed the "Character Details:\n  " line here as it's under the main section
       
-      // MODIFIED: Join without commas
       const charDetails = draftCharObjArray.map(charObj => {
         let displayChar = charObj.char;
         if (displayChar === '\n') {
@@ -618,36 +636,31 @@ export default function EditPermutationUI() {
           displayChar = '\\t';
         } else if (displayChar === '\r') {
             displayChar = '\\r';
-        }
-        // Escape single quotes if char is a single quote for file format
-        if (displayChar === "'") {
+        } else if (displayChar === "'") { // Escape single quotes for file format
             displayChar = "\\'";
-        }
-        // Escape backslash if char is a backslash
-        if (displayChar === "\\") {
+        } else if (displayChar === "\\") { // Escape backslashes for file format
             displayChar = "\\\\";
         }
         return `'${displayChar}'(${charObj.id})`;
-      }).join(''); // JOIN WITHOUT COMMAS
+      }).join(''); // Join WITHOUT commas
 
-      fileContent += `${charDetails}\n`;
-      fileContent += `\n`;
+      fileContent += `  ${charDetails}\n\n`; // Indent and add newlines
     });
 
     const blob = new Blob([fileContent], { type: 'text/plain;charset=utf-8' });
     const link = document.createElement('a');
     link.href = URL.createObjectURL(blob);
-    link.download = 'all_drafts_with_ids.txt';
+    link.download = 'all_drafts_with_ids_v2.txt'; // Changed filename slightly
 
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
     URL.revokeObjectURL(link.href);
 
-    console.log('[saveAllDraftsToFile] File download triggered for all_drafts_with_ids.txt.');
+    console.log('[saveAllDraftsToFile] File download triggered for all_drafts_with_ids_v2.txt.');
   }
+  // END MODIFIED saveAllDraftsToFile function
   
-  // Function to handle file upload
   function handleFileUpload(event) {
     const file = event.target.files[0];
     if (!file) {
