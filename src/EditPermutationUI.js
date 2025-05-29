@@ -174,8 +174,134 @@ function parseDraftsFile(fileContent) {
     return { drafts: newParsedDrafts, maxId: maxIdNumber };
 }
 
-// SuggestionsDialog Component (defined above or imported)
-// function SuggestionsDialog({ suggestions, currentIndex, onClose, onNext, onBack }) { ... }
+// Basic styles for the dialog (can be moved to a CSS file)
+const dialogOverlayStyle = {
+  position: 'fixed',
+  top: 0,
+  left: 0,
+  right: 0,
+  bottom: 0,
+  backgroundColor: 'rgba(0, 0, 0, 0.5)',
+  display: 'flex',
+  justifyContent: 'center',
+  alignItems: 'center',
+  zIndex: 1000,
+};
+
+const dialogContentStyle = {
+  backgroundColor: 'white',
+  padding: '20px',
+  borderRadius: '8px',
+  boxShadow: '0 4px 6px rgba(0, 0, 0, 0.1)',
+  width: '80%',
+  maxWidth: '800px',
+  maxHeight: '90vh',
+  overflowY: 'auto',
+  display: 'flex',
+  flexDirection: 'column'
+};
+
+const comparisonContainerStyle = {
+  display: 'flex',
+  justifyContent: 'space-between',
+  flexGrow: 1,
+  overflowY: 'auto', 
+  marginBottom: '15px',
+};
+
+const columnStyle = {
+  width: '48%',
+  border: '1px solid #eee',
+  padding: '10px',
+  borderRadius: '4px',
+  backgroundColor: '#f9f9f9',
+  display: 'flex', 
+  flexDirection: 'column' 
+};
+
+const preStyle = {
+  whiteSpace: 'pre-wrap',
+  wordWrap: 'break-word',
+  margin: 0,
+  backgroundColor: 'white',
+  padding: '8px',
+  border: '1px solid #ddd',
+  borderRadius: '4px',
+  flexGrow: 1, 
+  overflowY: 'auto' 
+};
+
+const dialogNavigationStyle = {
+  display: 'flex',
+  justifyContent: 'space-between',
+  marginTop: '10px',
+  paddingTop: '10px',
+  borderTop: '1px solid #eee'
+};
+
+const buttonStyle = {
+  padding: '8px 15px',
+  borderRadius: '4px',
+  border: '1px solid #ccc',
+  cursor: 'pointer'
+};
+
+
+function SuggestionsDialog({ suggestions, currentIndex, onClose, onNext, onBack }) {
+  if (!suggestions || suggestions.length === 0) {
+    return null;
+  }
+
+  const currentSuggestion = suggestions[currentIndex];
+  if (!currentSuggestion) {
+    return (
+      <div style={dialogOverlayStyle}>
+        <div style={dialogContentStyle}>
+          <p>Error: Suggestion not found.</p>
+          <button onClick={onClose} style={buttonStyle}>Close</button>
+        </div>
+      </div>
+    );
+  }
+
+  const comp1Text = Array.isArray(currentSuggestion.selectedDraftAtTimeOfEdit)
+    ? charArrayToString(currentSuggestion.selectedDraftAtTimeOfEdit)
+    : "Invalid data for Component 1";
+  const comp2Text = Array.isArray(currentSuggestion.resultingDraft)
+    ? charArrayToString(currentSuggestion.resultingDraft)
+    : "Invalid data for Component 2";
+
+  return (
+    <div style={dialogOverlayStyle}>
+      <div style={dialogContentStyle}>
+        <h3 style={{ textAlign: 'center', marginTop: 0 }}>
+          Edit Suggestion ID: {currentSuggestion.id} (Entry {currentIndex + 1} of {suggestions.length})
+        </h3>
+        <div style={comparisonContainerStyle}>
+          <div style={columnStyle}>
+            <h4>Before Edit (Component 1)</h4>
+            <pre style={preStyle}>{comp1Text}</pre>
+          </div>
+          <div style={columnStyle}>
+            <h4>After Edit (Component 2)</h4>
+            <pre style={preStyle}>{comp2Text}</pre>
+          </div>
+        </div>
+        <div style={dialogNavigationStyle}>
+          <button onClick={onBack} disabled={currentIndex === 0} style={buttonStyle}>
+            Back
+          </button>
+          <button onClick={onNext} disabled={currentIndex === suggestions.length - 1} style={buttonStyle}>
+            Next
+          </button>
+          <button onClick={onClose} style={buttonStyle}>
+            Close
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 
 export default function EditPermutationUI() {
@@ -193,7 +319,6 @@ export default function EditPermutationUI() {
   const [editSuggestions, setEditSuggestions] = useState([]);
   const editSuggestionCounterRef = useRef(1);
 
-  // State for suggestion dialog
   const [showSuggestionsDialog, setShowSuggestionsDialog] = useState(false);
   const [currentSuggestionViewIndex, setCurrentSuggestionViewIndex] = useState(0);
 
@@ -203,6 +328,7 @@ export default function EditPermutationUI() {
     from: from ? charArrayToString(from) : null,
     to: charArrayToString(to),
   }));
+
   useEffect(() => {
     const handleKey = e => {
       if (e.ctrlKey && e.key === "z") { e.preventDefault(); undo(); }
@@ -210,7 +336,8 @@ export default function EditPermutationUI() {
     };
     window.addEventListener("keydown", handleKey);
     return () => window.removeEventListener("keydown", handleKey);
-  }, [history, redoStack, drafts]); // Added drafts back as it might be relevant for context if undo/redo affects available drafts for selection
+  }, [history, redoStack, drafts]); 
+  
   function saveHistory(newDrafts, newEdges) {
     console.log('[saveHistory] Saving. New drafts count:', newDrafts.length, 'New edges count:', newEdges.length);
     setHistory(h => [...h, drafts]);
@@ -887,11 +1014,10 @@ export default function EditPermutationUI() {
                 Download All Drafts
             </button>
         )}
-         {/* Button to view edit suggestions */}
          {editSuggestions.length > 0 && (
           <button
             onClick={() => {
-              setCurrentSuggestionViewIndex(0); // Start from the first suggestion
+              setCurrentSuggestionViewIndex(0); 
               setShowSuggestionsDialog(true);
             }}
             className="bg-yellow-500 text-white px-4 py-2 rounded hover:bg-yellow-600"
@@ -901,7 +1027,6 @@ export default function EditPermutationUI() {
         )}
       </div>
 
-      {/* Suggestions Dialog */}
       {showSuggestionsDialog && editSuggestions.length > 0 && (
         <SuggestionsDialog
           suggestions={editSuggestions}
