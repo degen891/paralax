@@ -280,7 +280,6 @@ function SuggestionsDialog({ suggestions, currentIndex, onClose, onNext, onBack,
             <pre style={preStyle}>{comp2Highlighted}</pre>
           </div>
         </div>
-        {/* DIALOG BUTTONS REVERTED TO ORIGINAL STYLING */}
         <div style={dialogNavigationStyle}>
           <button onClick={onBack} disabled={currentIndex === 0} style={buttonStyle}>
             Back
@@ -493,6 +492,7 @@ export default function EditPermutationUI() {
   }
 
   // This is the applyEdit function from the user's provided EditPermutationUI.js.txt
+  // (sources [1061]-[1184] or [331]-[455] from combined file)
   // with vector logic and edit score initialization integrated.
   function applyEdit() {
     if (!selectedDraft || !Array.isArray(selectedDraft)) {
