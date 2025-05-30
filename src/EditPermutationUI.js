@@ -56,6 +56,7 @@ function idSeqExists(idArr, seq) {
 // Auto-conditions: specs for removal or insertion
 function getAutoConditions(arr, offset, removedLen) {
   const text = charArrayToString(arr);
+  // console.log('[getAutoConditions] Called. text:', `"${text}"`, 'offset:', offset, 'removedLen:', removedLen);
   if (removedLen > 0) {
     const segmentIds = arr.slice(offset, offset + removedLen).map(c => c.id);
     return [{ type: 'remove', segmentIds }];
@@ -302,7 +303,7 @@ export default function EditPermutationUI() {
   const [graphEdges, setGraphEdges] = useState([]); 
   const draftBoxRef = useRef(null);
   const fileInputRef = useRef(null); 
-  const allDraftsListRef = useRef(null); // New ref for the All Drafts ul
+  const allDraftsListRef = useRef(null); 
 
   const [editSuggestions, setEditSuggestions] = useState([]);
   const editSuggestionCounterRef = useRef(1);
@@ -372,7 +373,6 @@ export default function EditPermutationUI() {
     return draftsWithSortData.map(item => item.draftObject);
   }, [visibleDraftsUnsorted, sortByScoreActive, draftVectorsMap, editSuggestions]);
 
-  // Effect to synchronize All Drafts list height with Textarea height
   useEffect(() => {
     if (draftBoxRef.current && allDraftsListRef.current) {
         const textareaHeight = draftBoxRef.current.offsetHeight;
@@ -380,7 +380,7 @@ export default function EditPermutationUI() {
             allDraftsListRef.current.style.height = `${textareaHeight}px`;
         }
     }
-  }, [visibleDraftsUnsorted, sortedAndVisibleDrafts]); // Re-run if the list of visible/sorted drafts changes
+  }, [sortedAndVisibleDrafts]); // Re-sync if the list that sets the content of the UL changes
 
   useEffect(() => {
     if ((hideBadEditsActive || sortByScoreActive) && selectedDraft && Array.isArray(selectedDraft) && selectedDraft.length > 0) {
@@ -397,7 +397,7 @@ export default function EditPermutationUI() {
   const displayStringDrafts = sortedAndVisibleDrafts.map(arr => charArrayToString(arr));
   
   const displayGraphEdges = useMemo(() => {
-    const baseVisibleSetForGraph = visibleDraftsUnsorted; // Graph structure based on filtering, not UI sort order
+    const baseVisibleSetForGraph = visibleDraftsUnsorted; 
     const visibleDraftContentStrings = new Set(baseVisibleSetForGraph.map(d => charArrayToString(d)));
     return graphEdges.filter(edge => {
         const toNodeVisible = edge.to && visibleDraftContentStrings.has(charArrayToString(edge.to));
@@ -916,7 +916,7 @@ export default function EditPermutationUI() {
               {/* --- LEFT COLUMN --- */}
               <div className="lg:flex-1 w-full mb-6 lg:mb-0">
                 <h2 className="text-xl font-semibold text-center mb-2">All Drafts ({displayStringDrafts.length}):</h2>
-                <ul ref={allDraftsListRef} className="flex flex-wrap gap-2 justify-center bg-gray-50 p-3 rounded-md shadow max-h-[400px] overflow-y-auto" /* max-h-[400px] might be overridden by JS if textarea is taller */>
+                <ul ref={allDraftsListRef} className="flex flex-wrap gap-2 justify-center bg-gray-50 p-3 rounded-md shadow max-h-[400px] overflow-y-auto">
                    {displayStringDrafts.map((text, i) => {
                        const actualDraftCharArr = sortedAndVisibleDrafts[i];
                        const draftKey = getDraftKey(actualDraftCharArr);
@@ -978,12 +978,30 @@ export default function EditPermutationUI() {
                     }
                 </h2>
                 <textarea ref={draftBoxRef} onMouseUp={handleSelect} value={currentEditText} onChange={e => setCurrentEditText(e.target.value)} className="w-full p-2 border rounded whitespace-pre-wrap shadow-inner" rows="10"/>
-                <div className="mt-2 text-center">Conditions: {getConditionDisplayText()}</div>
+                 {/* Submit/Undo/Redo buttons are now BEFORE the Conditions display */}
                 <div className="flex space-x-2 mt-4 justify-center">
-                  <button onClick={applyEdit} className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700" disabled={!selectedDraft || selectedDraft.length === 0}>Submit Edit</button>
-                  <button onClick={undo} className="bg-gray-200 px-4 py-2 rounded hover:bg-gray-300">Undo</button>
-                  <button onClick={redo} className="bg-gray-200 px-4 py-2 rounded hover:bg-gray-300">Redo</button>
+                  <button 
+                    onClick={applyEdit} 
+                    className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700" 
+                    disabled={!selectedDraft || selectedDraft.length === 0}
+                  >
+                    Submit Edit
+                  </button>
+                  <button 
+                    onClick={undo} 
+                    className="bg-gray-200 px-4 py-2 rounded hover:bg-gray-300"
+                  >
+                    Undo
+                  </button>
+                  <button 
+                    onClick={redo} 
+                    className="bg-gray-200 px-4 py-2 rounded hover:bg-gray-300"
+                  >
+                    Redo
+                  </button>
                 </div>
+                {/* Conditions display is now AFTER the Submit/Undo/Redo buttons */}
+                <div className="mt-2 text-center">Conditions: {getConditionDisplayText()}</div>
               </div>
             </div>
           </div>
