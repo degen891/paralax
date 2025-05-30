@@ -237,14 +237,16 @@ const comparisonContainerStyle = { display:'flex',justifyContent:'space-between'
 const columnStyle = { width:'48%',border:'1px solid #eee',padding:'10px',borderRadius:'4px',backgroundColor:'#f9f9f9',display:'flex',flexDirection:'column'};
 const preStyle = { whiteSpace:'pre-wrap',wordWrap:'break-word',margin:0,backgroundColor:'white',padding:'8px',border:'1px solid #ddd',borderRadius:'4px',flexGrow:1,overflowY:'auto'};
 const dialogNavigationStyle = { display:'flex',justifyContent:'space-around', alignItems:'center', marginTop:'10px',paddingTop:'10px',borderTop:'1px solid #eee'};
-const voteButtonStyle = { padding:'8px 12px', borderRadius:'4px', border:'1px solid #ccc', cursor:'pointer', margin: '0 5px'};
-const buttonStyle = { padding:'8px 15px', borderRadius:'4px', border:'1px solid #ccc', cursor:'pointer'};
+// voteButtonStyle and buttonStyle are no longer used as Tailwind classes are applied directly
+// const voteButtonStyle = { padding:'8px 12px', borderRadius:'4px', border:'1px solid #ccc', cursor:'pointer', margin: '0 5px'};
+// const buttonStyle = { padding:'8px 15px', borderRadius:'4px', border:'1px solid #ccc', cursor:'pointer'};
+
 
 function SuggestionsDialog({ suggestions, currentIndex, onClose, onNext, onBack, onIncrementScore, onDecrementScore }) {
   if (!suggestions || suggestions.length === 0) return null;
   const currentSuggestion = suggestions[currentIndex];
   if (!currentSuggestion) {
-    return ( <div style={dialogOverlayStyle}><div style={dialogContentStyle}><p>Error: Suggestion not found.</p><button onClick={onClose} style={buttonStyle}>Close</button></div></div> );
+    return ( <div style={dialogOverlayStyle}><div style={dialogContentStyle}><p>Error: Suggestion not found.</p><button onClick={onClose} className="bg-blue-600 text-white hover:bg-blue-700 rounded px-3 py-1">Close</button></div></div> );
   }
   const renderHighlightedText = (charArray, isComponent1, suggestion) => {
     if (!Array.isArray(charArray) || charArray === null) return "Invalid data";
@@ -281,11 +283,21 @@ function SuggestionsDialog({ suggestions, currentIndex, onClose, onNext, onBack,
           </div>
         </div>
         <div style={dialogNavigationStyle}>
-          <button onClick={onBack} disabled={currentIndex === 0} style={buttonStyle}>Back</button>
-          <button onClick={() => onIncrementScore(currentSuggestion.id)} style={{...voteButtonStyle, backgroundColor: '#90ee90'}}>Second (+1)</button>
-          <button onClick={() => onDecrementScore(currentSuggestion.id)} style={{...voteButtonStyle, backgroundColor: '#ffcccb'}}>Oppose (-1)</button>
-          <button onClick={onNext} disabled={currentIndex === suggestions.length - 1} style={buttonStyle}>Next</button>
-          <button onClick={onClose} style={buttonStyle}>Close</button>
+          <button onClick={onBack} disabled={currentIndex === 0} className="bg-blue-600 text-white hover:bg-blue-700 rounded px-3 py-1">
+            Back
+          </button>
+          <button onClick={() => onIncrementScore(currentSuggestion.id)} className="bg-blue-600 text-white hover:bg-blue-700 rounded px-3 py-1 mx-2">
+            Second (+1)
+          </button>
+          <button onClick={() => onDecrementScore(currentSuggestion.id)} className="bg-blue-600 text-white hover:bg-blue-700 rounded px-3 py-1 mx-2">
+            Oppose (-1)
+          </button>
+          <button onClick={onNext} disabled={currentIndex === suggestions.length - 1} className="bg-blue-600 text-white hover:bg-blue-700 rounded px-3 py-1">
+            Next
+          </button>
+          <button onClick={onClose} className="bg-blue-600 text-white hover:bg-blue-700 rounded px-3 py-1">
+            Close
+          </button>
         </div>
       </div>
     </div>
@@ -380,7 +392,7 @@ export default function EditPermutationUI() {
             allDraftsListRef.current.style.height = `${textareaHeight}px`;
         }
     }
-  }, [sortedAndVisibleDrafts]); // Re-sync if the list that sets the content of the UL changes
+  }, [sortedAndVisibleDrafts]); 
 
   useEffect(() => {
     if ((hideBadEditsActive || sortByScoreActive) && selectedDraft && Array.isArray(selectedDraft) && selectedDraft.length > 0) {
@@ -475,7 +487,11 @@ export default function EditPermutationUI() {
     setSortByScoreActive(false); 
   }
 
+  // This is the applyEdit function from the user's provided EditPermutationUI.js.txt
+  // (sources [1061]-[1184] or [331]-[455] from combined file)
+  // with vector logic and edit score initialization integrated.
   function applyEdit() {
+    // console.log('--- [applyEdit] Start ---');
     if (!selectedDraft || !Array.isArray(selectedDraft)) {
         console.error("Selected draft is invalid or not an array", selectedDraft);
         return;
@@ -546,7 +562,8 @@ export default function EditPermutationUI() {
       
       drafts.forEach((dArr, draftIndex) => { 
         let updatedCharArray;
-        let wasModifiedAsChild = false; 
+        // --- Start of sentence addition logic from user's file ---
+        // (This is the block from sources [385]-[430] / [634]-[679] as used previously)
         const targetIdArr = dArr.map(c => c.id); 
         const targetDraftText = charArrayToString(dArr); 
         if (conditionParts.length && !conditionParts.every(condObj => idSeqExists(targetIdArr, condObj.ids))) { 
@@ -561,10 +578,10 @@ export default function EditPermutationUI() {
         if (insertionPointInDArr < targetDraftText.length && targetDraftText.charAt(insertionPointInDArr) === ' ' && (baseInsertedText.length === 0 || (baseInsertedText.length > 0 && baseInsertedText.charAt(0) !== ' '))) finalInsertionPoint = insertionPointInDArr + 1; 
         const before = dArr.slice(0, finalInsertionPoint); const after = dArr.slice(finalInsertionPoint); const insArr = masterInsArr; 
         updatedCharArray = [...before, ...insArr, ...after]; 
-        wasModifiedAsChild = true;
+        // --- End of sentence addition logic ---
         
         const updatedKey = getDraftKey(updatedCharArray);
-        if (wasModifiedAsChild && !isDraftContentEmpty(updatedCharArray) && !seenKeys.has(updatedKey)) {
+        if (!isDraftContentEmpty(updatedCharArray) && !seenKeys.has(updatedKey)) {
             seenKeys.add(updatedKey);
             newDraftsResultFromUserLogic.push(updatedCharArray);
             newEdgesResultFromUserLogic.push({ from: dArr, to: updatedCharArray });
@@ -856,7 +873,7 @@ export default function EditPermutationUI() {
       <div className="my-4 flex space-x-2 justify-center">
         <button 
           onClick={initializeDraft} 
-          className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700"
+          className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"
         >
           Set Initial Draft
         </button>
@@ -870,7 +887,7 @@ export default function EditPermutationUI() {
           />
           <button 
             onClick={() => fileInputRef.current && fileInputRef.current.click()} 
-            className="bg-sky-600 text-white px-4 py-2 rounded hover:bg-sky-700"
+            className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"
           >
             Upload Drafts File
           </button>
@@ -878,7 +895,7 @@ export default function EditPermutationUI() {
         {drafts.length > 0 && (
           <button 
             onClick={saveAllDraftsToFile} 
-            className="bg-purple-600 text-white px-4 py-2 rounded hover:bg-purple-700"
+            className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"
           >
             Download All Drafts
           </button>
@@ -939,7 +956,7 @@ export default function EditPermutationUI() {
                         {hasBadEdits && (
                             <button 
                                 onClick={() => setHideBadEditsActive(prev => !prev)} 
-                                className={`px-4 py-2 rounded text-white ${hideBadEditsActive ? 'bg-red-500 hover:bg-red-600' : 'bg-indigo-500 hover:bg-indigo-600'}`}
+                                className={`px-4 py-2 rounded text-white ${hideBadEditsActive ? 'bg-red-500 hover:bg-red-600' : 'bg-blue-600 hover:bg-blue-700'}`}
                             >
                                 {hideBadEditsActive ? "Show All Edits" : "Hide Bad Edits"}
                             </button>
@@ -947,7 +964,7 @@ export default function EditPermutationUI() {
                         {editSuggestions.length > 0 && visibleDraftsUnsorted.length > 0 && ( 
                             <button
                               onClick={() => setSortByScoreActive(prev => !prev)}
-                              className={`px-4 py-2 rounded text-white ${sortByScoreActive ? 'bg-teal-600 hover:bg-teal-700' : 'bg-teal-500 hover:bg-teal-600'}`}
+                              className={`px-4 py-2 rounded text-white ${sortByScoreActive ? 'bg-teal-600 hover:bg-teal-700' : 'bg-blue-600 hover:bg-blue-700'}`}
                             >
                               {sortByScoreActive ? "Undo Draft Score Sort" : "Sort by Draft Score"}
                             </button>
@@ -978,7 +995,7 @@ export default function EditPermutationUI() {
                     }
                 </h2>
                 <textarea ref={draftBoxRef} onMouseUp={handleSelect} value={currentEditText} onChange={e => setCurrentEditText(e.target.value)} className="w-full p-2 border rounded whitespace-pre-wrap shadow-inner" rows="10"/>
-                 {/* Submit/Undo/Redo buttons are now BEFORE the Conditions display */}
+                {/* Submit/Undo/Redo buttons are now BEFORE the Conditions display */}
                 <div className="flex space-x-2 mt-4 justify-center">
                   <button 
                     onClick={applyEdit} 
