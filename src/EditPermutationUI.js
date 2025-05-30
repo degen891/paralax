@@ -25,12 +25,8 @@ function getDraftKey(charArr) {
 function isDraftContentEmpty(arr) {
   const text = charArrayToString(arr);
   const trimmedText = text.trim();
-  if (trimmedText.length === 0) {
-    return true;
-  }
-  if (!/[a-zA-Z0-9]/.test(trimmedText)) {
-    return true;
-  }
+  if (trimmedText.length === 0) return true;
+  if (!/[a-zA-Z0-9]/.test(trimmedText)) return true;
   return false;
 }
 
@@ -46,9 +42,7 @@ function findSegmentIndex(idArr, segmentIds) {
         break;
       }
     }
-    if (match) {
-      return i;
-    }
+    if (match) return i;
   }
   return -1;
 }
@@ -62,10 +56,8 @@ function idSeqExists(idArr, seq) {
 // Auto-conditions: specs for removal or insertion
 function getAutoConditions(arr, offset, removedLen) {
   const text = charArrayToString(arr);
-  // console.log('[getAutoConditions] Called. text:', `"${text}"`, 'offset:', offset, 'removedLen:', removedLen);
   if (removedLen > 0) {
     const segmentIds = arr.slice(offset, offset + removedLen).map(c => c.id);
-    // console.log('[getAutoConditions] Removal case. segmentIds:', segmentIds);
     return [{ type: 'remove', segmentIds }];
   }
   const beforePara = text.lastIndexOf("\n", offset - 1);
@@ -76,10 +68,8 @@ function getAutoConditions(arr, offset, removedLen) {
   const sentenceRegex = /[^.?!;:]+[.?!;:]/g;
   let match;
   while ((match = sentenceRegex.exec(paragraph)) !== null) {
-    const sentenceText = match[0];
-    const localStart = match.index;
-    const globalStart = paraStart + localStart;
-    const globalEnd = paraStart + localStart + sentenceText.length;
+    const globalStart = paraStart + match.index;
+    const globalEnd = globalStart + match[0].length;
     if (offset >= globalStart && offset < globalEnd) {
       const segmentIds = arr.slice(globalStart, globalEnd).map(c => c.id);
       const relOffset = offset - globalStart;
@@ -91,79 +81,46 @@ function getAutoConditions(arr, offset, removedLen) {
   return [{ type: 'insert', segmentIds: segIds, relOffset }];
 }
 
-function parseDraftsFile(fileContent) {
-    // console.log("[parseDraftsFile] Starting to parse file content (two-section format).");
-    const newParsedDrafts = [];
-    let maxIdNumber = -1;
-
-    const detailsSectionMarker = "--- CHARACTER DETAILS ---";
-    const detailsStartIndex = fileContent.indexOf(detailsSectionMarker);
-    if (detailsStartIndex === -1) {
-        throw new Error("File format error: '--- CHARACTER DETAILS ---' section not found.");
-    }
-
-    const detailsContent = fileContent.substring(detailsStartIndex + detailsSectionMarker.length);
-    const draftDetailSections = detailsContent.split("--- DRAFT ");
-    draftDetailSections.forEach((section, sectionIndex) => {
-        if (sectionIndex === 0) {
-             if (!/^\d+\s*---/.test(section.trimStart())) {
-                 if (section.trim()) {
-                    // console.log("[parseDraftsFile] Skipping initial content before first DRAFT in CHARACTER DETAILS section:", section.substring(0,30).replace(/\n/g, "\\n"));
-                 }
-                 return;
-             }
-        }
-        
-        const sectionTrimmed = section.trimStart();
-        if (!sectionTrimmed || !/^\d+\s*---/.test(sectionTrimmed)) {
-            if (section.trim()) {
-                 // console.warn(`[parseDraftsFile] Skipping malformed draft section in CHARACTER DETAILS: "${section.substring(0, 50).replace(/\n/g, "\\n")}..."`);
-            }
-            return;
-        }
-        
-        const lines = section.split('\n');
-        const currentDraftCharObjs = [];
-        let actualDetailsLine = null;
-        for (let i = 1; i < lines.length; i++) {
-            const lineContent = lines[i];
-            if (lineContent.startsWith("  '") && lineContent.endsWith(")")) {
-                actualDetailsLine = lineContent.trim();
-                break;
-            }
-        }
-
-        if (actualDetailsLine) {
-            const charDetailRegex = /'((?:\\.|[^'\\])*)'\s*\((char-\d+)\)/g;
-            let regexMatch;
-            while ((regexMatch = charDetailRegex.exec(actualDetailsLine)) !== null) {
-                let char = regexMatch[1];
-                const id = regexMatch[2];
-
-                if (char === '\\n') char = '\n';
-                else if (char === '\\t') char = '\t';
-                else if (char === '\\r') char = '\r';
-                else if (char === "\\'") char = "'";
-                else if (char === '\\\\') char = '\\';
-                
-                currentDraftCharObjs.push({ id, char });
-                if (id.startsWith("char-")) {
-                    const idNum = parseInt(id.substring(5), 10);
-                    if (!isNaN(idNum) && idNum > maxIdNumber) {
-                        maxIdNumber = idNum;
-                    }
-                }
-            }
-        }
-        
-        if (actualDetailsLine !== null) {
-            newParsedDrafts.push(currentDraftCharObjs);
-        } 
-    });
-    
-    return { drafts: newParsedDrafts, maxId: maxIdNumber };
+// Helper to serialize CharObj[] for file output (single line)
+function serializeCharObjArray(charArr) {
+    if (!charArr || !Array.isArray(charArr)) return "";
+    return charArr.map(co => {
+        let displayChar = co.char;
+        if (displayChar === '\n') displayChar = '\\n';
+        else if (displayChar === '\t') displayChar = '\\t';
+        else if (displayChar === '\r') displayChar = '\\r';
+        else if (displayChar === "'") displayChar = "\\'";
+        else if (displayChar === "\\") displayChar = "\\\\";
+        return `'${displayChar}'(${co.id})`;
+    }).join('');
 }
 
+// Helper to deserialize CharObj[] string from file (updates maxId via callback)
+function deserializeCharObjArray(detailsLine, updateMaxIdCallback) {
+    const charObjs = [];
+    if (!detailsLine || typeof detailsLine !== 'string') return charObjs;
+
+    const charDetailRegex = /'((?:\\.|[^'\\])*)'\s*\((char-\d+)\)/g;
+    let regexMatch;
+    while ((regexMatch = charDetailRegex.exec(detailsLine)) !== null) {
+        let char = regexMatch[1];
+        const id = regexMatch[2];
+        if (char === '\\n') char = '\n';
+        else if (char === '\\t') char = '\t';
+        else if (char === '\\r') char = '\r';
+        else if (char === "\\'") char = "'";
+        else if (char === '\\\\') char = '\\';
+        charObjs.push({ id, char });
+        if (id.startsWith("char-")) {
+             const idNum = parseInt(id.substring(5), 10);
+             if (!isNaN(idNum)) updateMaxIdCallback(idNum);
+        }
+    }
+    return charObjs;
+}
+
+
+// Function to calculate Draft Score (as defined by user)
 function calculateDraftScore(draftCharArr, draftVectorsMap, editSuggestions) {
   if (!draftCharArr || !draftVectorsMap || !editSuggestions) {
     return 1; 
@@ -188,25 +145,142 @@ function calculateDraftScore(draftCharArr, draftVectorsMap, editSuggestions) {
   return sumOfEditSuggestionScores + 1;
 }
 
+// --- Main Parsing Function for Uploaded File ---
+function parseFullFileContent(fileContent) {
+    console.log("[parseFullFileContent] Starting to parse full file content.");
+    let parsedOutput = {
+        charArrays: [],
+        maxSeenId: -1,
+        draftVectorsMap: new Map(),
+        editSuggestions: [],
+        nextSuggestionId: 1
+    };
+    let maxParsedSuggestionId = 0;
+
+    const updateMaxId = (idNum) => {
+        if (idNum > parsedOutput.maxSeenId) {
+            parsedOutput.maxSeenId = idNum;
+        }
+    };
+
+    const sections = {
+        TEXTS: "--- TEXTS ---",
+        CHARACTER_DETAILS: "--- CHARACTER DETAILS ---",
+        DRAFT_VECTORS: "--- DRAFT VECTORS ---",
+        EDIT_SUGGESTIONS: "--- EDIT SUGGESTIONS ---"
+    };
+
+    const extractSection = (startMarker, endMarkerBasis) => {
+        let startIndex = fileContent.indexOf(startMarker);
+        if (startIndex === -1) return "";
+        startIndex += startMarker.length;
+
+        let endIndex = fileContent.length; // Default to end of file
+        const nextSectionMarkers = Object.values(sections).filter(m => m !== startMarker && fileContent.indexOf(m, startIndex) !== -1);
+        if (nextSectionMarkers.length > 0) {
+            endIndex = Math.min(...nextSectionMarkers.map(m => fileContent.indexOf(m, startIndex)));
+        }
+        return fileContent.substring(startIndex, endIndex).trim();
+    };
+
+    // 1. Parse Character Details (to get charArrays and maxId)
+    // This section must be parsed first to allow draftKey generation for vectors.
+    const charDetailsContent = extractSection(sections.CHARACTER_DETAILS, sections.DRAFT_VECTORS);
+    if (charDetailsContent) {
+        const draftDetailBlocks = charDetailsContent.split("--- DRAFT ");
+        draftDetailBlocks.forEach(block => {
+            if (!block.trim() || !/^\d+\s*---/.test(block.trimStart())) return;
+            const lines = block.split('\n');
+            let actualDetailsLine = null;
+            for (let i = 1; i < lines.length; i++) {
+                if (lines[i].trim().startsWith("'") && lines[i].trim().endsWith(")")) {
+                    actualDetailsLine = lines[i].trim();
+                    break;
+                }
+            }
+            if (actualDetailsLine) {
+                const charObjs = deserializeCharObjArray(actualDetailsLine, updateMaxId);
+                parsedOutput.charArrays.push(charObjs);
+            }
+        });
+    } else {
+        console.warn("Character Details section not found or empty.");
+    }
+    
+    // 2. Parse Draft Vectors
+    const draftVectorsContent = extractSection(sections.DRAFT_VECTORS, sections.EDIT_SUGGESTIONS);
+    if (draftVectorsContent) {
+        const vectorEntries = draftVectorsContent.split("--- DRAFT KEY ---").map(s => s.trim()).filter(s => s);
+        vectorEntries.forEach(entry => {
+            const keyMatch = entry.match(/^(.*?)\s*Vector:\s*\[(.*?)\]/s);
+            if (keyMatch) {
+                const draftKey = keyMatch[1].trim();
+                const vectorStr = keyMatch[2].trim();
+                if (draftKey && vectorStr) {
+                    const vector = vectorStr.split(',').map(Number);
+                    parsedOutput.draftVectorsMap.set(draftKey, vector);
+                } else if (draftKey && vectorStr === "") { // Handle empty vector []
+                    parsedOutput.draftVectorsMap.set(draftKey, []);
+                }
+            }
+        });
+    }
+
+    // 3. Parse Edit Suggestions
+    const editSuggestionsContent = extractSection(sections.EDIT_SUGGESTIONS, " نهاية الملف"); // Use a unique end delimiter or end of file
+    if (editSuggestionsContent) {
+        const suggestionBlocks = editSuggestionsContent.split("--- SUGGESTION ");
+        suggestionBlocks.forEach(block => {
+            if (!block.trim() || !/^\d+\s*---/.test(block.trimStart())) return;
+            
+            const suggestionData = {
+                removedCharIds: new Set(),
+                newCharIds: new Set(),
+                conditionCharIds: new Set()
+            }; // Initialize with defaults
+
+            const idMatch = block.match(/^(\d+)\s*---/);
+            if (idMatch) suggestionData.id = parseInt(idMatch[1], 10); else return;
+            if (suggestionData.id > maxParsedSuggestionId) maxParsedSuggestionId = suggestionData.id;
+
+            const scoreMatch = block.match(/Score:\s*(-?\d+)/);
+            if (scoreMatch) suggestionData.score = parseInt(scoreMatch[1], 10);
+
+            const selDraftMatch = block.match(/SelectedDraftAtTimeOfEdit:\s*([^\n]*)/);
+            if (selDraftMatch) suggestionData.selectedDraftAtTimeOfEdit = deserializeCharObjArray(selDraftMatch[1].trim(), updateMaxId);
+            
+            const resDraftMatch = block.match(/ResultingDraft:\s*([^\n]*)/);
+            if (resDraftMatch) suggestionData.resultingDraft = deserializeCharObjArray(resDraftMatch[1].trim(), updateMaxId);
+
+            const removedIdsMatch = block.match(/RemovedCharIds:\s*([^\n]*)/);
+            if (removedIdsMatch && removedIdsMatch[1].trim()) suggestionData.removedCharIds = new Set(removedIdsMatch[1].trim().split(',').filter(id => id));
+            
+            const newIdsMatch = block.match(/NewCharIds:\s*([^\n]*)/);
+            if (newIdsMatch && newIdsMatch[1].trim()) suggestionData.newCharIds = new Set(newIdsMatch[1].trim().split(',').filter(id => id));
+
+            const condIdsMatch = block.match(/ConditionCharIds:\s*([^\n]*)/);
+            if (condIdsMatch && condIdsMatch[1].trim()) suggestionData.conditionCharIds = new Set(condIdsMatch[1].trim().split(',').filter(id => id));
+            
+            parsedOutput.editSuggestions.push(suggestionData);
+        });
+        parsedOutput.nextSuggestionId = maxParsedSuggestionId + 1;
+    }
+    
+    console.log("[parseFullFileContent] Finished parsing:", parsedOutput);
+    return parsedOutput;
+}
+
+
 const dialogOverlayStyle = { position: 'fixed',top:0,left:0,right:0,bottom:0,backgroundColor:'rgba(0,0,0,0.5)',display:'flex',justifyContent:'center',alignItems:'center',zIndex:1000 };
 const dialogContentStyle = { backgroundColor:'white',padding:'20px',borderRadius:'8px',boxShadow:'0 4px 6px rgba(0,0,0,0.1)',width:'80%',maxWidth:'800px',maxHeight:'90vh',overflowY:'auto',display:'flex',flexDirection:'column'};
 const comparisonContainerStyle = { display:'flex',justifyContent:'space-between',flexGrow:1,overflowY:'auto',marginBottom:'15px'};
 const columnStyle = { width:'48%',border:'1px solid #eee',padding:'10px',borderRadius:'4px',backgroundColor:'#f9f9f9',display:'flex',flexDirection:'column'};
 const preStyle = { whiteSpace:'pre-wrap',wordWrap:'break-word',margin:0,backgroundColor:'white',padding:'8px',border:'1px solid #ddd',borderRadius:'4px',flexGrow:1,overflowY:'auto'};
-const dialogNavigationStyle = { display:'flex',justifyContent:'space-around', alignItems:'center', marginTop:'10px',paddingTop:'10px',borderTop:'1px solid #eee'}; // Changed to space-around
-const voteButtonStyle = { padding:'8px 12px', borderRadius:'4px', border:'1px solid #ccc', cursor:'pointer', margin: '0 5px'}; // Style for vote buttons
+const dialogNavigationStyle = { display:'flex',justifyContent:'space-around', alignItems:'center', marginTop:'10px',paddingTop:'10px',borderTop:'1px solid #eee'};
+const voteButtonStyle = { padding:'8px 12px', borderRadius:'4px', border:'1px solid #ccc', cursor:'pointer', margin: '0 5px'};
 const buttonStyle = { padding:'8px 15px', borderRadius:'4px', border:'1px solid #ccc', cursor:'pointer'};
 
-
-function SuggestionsDialog({ 
-    suggestions, 
-    currentIndex, 
-    onClose, 
-    onNext, 
-    onBack, 
-    onIncrementScore, // New prop
-    onDecrementScore  // New prop
-}) {
+function SuggestionsDialog({ suggestions, currentIndex, onClose, onNext, onBack, onIncrementScore, onDecrementScore }) {
   if (!suggestions || suggestions.length === 0) return null;
   const currentSuggestion = suggestions[currentIndex];
   if (!currentSuggestion) {
@@ -247,27 +321,11 @@ function SuggestionsDialog({
           </div>
         </div>
         <div style={dialogNavigationStyle}>
-          <button onClick={onBack} disabled={currentIndex === 0} style={buttonStyle}>
-            Back
-          </button>
-          <button 
-            onClick={() => onIncrementScore(currentSuggestion.id)} 
-            style={{...voteButtonStyle, backgroundColor: '#90ee90'}} // Light green for Second
-          >
-            Second (+1)
-          </button>
-          <button 
-            onClick={() => onDecrementScore(currentSuggestion.id)} 
-            style={{...voteButtonStyle, backgroundColor: '#ffcccb'}} // Light red for Oppose
-          >
-            Oppose (-1)
-          </button>
-          <button onClick={onNext} disabled={currentIndex === suggestions.length - 1} style={buttonStyle}>
-            Next
-          </button>
-          <button onClick={onClose} style={buttonStyle}>
-            Close
-          </button>
+          <button onClick={onBack} disabled={currentIndex === 0} style={buttonStyle}>Back</button>
+          <button onClick={() => onIncrementScore(currentSuggestion.id)} style={{...voteButtonStyle, backgroundColor: '#90ee90'}}>Second (+1)</button>
+          <button onClick={() => onDecrementScore(currentSuggestion.id)} style={{...voteButtonStyle, backgroundColor: '#ffcccb'}}>Oppose (-1)</button>
+          <button onClick={onNext} disabled={currentIndex === suggestions.length - 1} style={buttonStyle}>Next</button>
+          <button onClick={onClose} style={buttonStyle}>Close</button>
         </div>
       </div>
     </div>
@@ -310,7 +368,6 @@ export default function EditPermutationUI() {
   }, [history, redoStack, drafts]); 
   
   function saveHistory(newDraftsData, newEdgesData) {
-    // console.log('[saveHistory] Saving. New drafts count:', newDraftsData.length, 'New edges count:', newEdgesData.length);
     setHistory(h => [...h, { drafts: drafts, suggestions: editSuggestions, draftVectors: draftVectorsMap }]);
     setRedoStack([]); 
     setDrafts(newDraftsData);
@@ -318,8 +375,7 @@ export default function EditPermutationUI() {
   }
 
   function undo() {
-    // console.log('[undo] Attempting undo.');
-    if (!history.length) { return; }
+    if (!history.length) return;
     setRedoStack(r => [{ drafts: drafts, suggestions: editSuggestions, draftVectors: draftVectorsMap }, ...r]);
     const prevState = history[history.length - 1];
     setHistory(h => h.slice(0, -1));
@@ -336,8 +392,7 @@ export default function EditPermutationUI() {
   }
 
   function redo() {
-    // console.log('[redo] Attempting redo.');
-    if (!redoStack.length) { return; }
+    if (!redoStack.length) return;
     setHistory(h => [...h, { drafts: drafts, suggestions: editSuggestions, draftVectors: draftVectorsMap }]);
     const nextState = redoStack[0];
     setRedoStack(r => r.slice(1));
@@ -350,8 +405,7 @@ export default function EditPermutationUI() {
   }
 
   function initializeDraft() {
-    // console.log('[initializeDraft] Called. defaultDraft:', `"${defaultDraft}"`);
-    if (!defaultDraft.trim()) { return; }
+    if (!defaultDraft.trim()) return;
     const arr = Array.from(defaultDraft).map(ch => ({ id: generateCharId(), char: ch }));
     
     const initialDraftKey = getDraftKey(arr);
@@ -370,7 +424,6 @@ export default function EditPermutationUI() {
   }
 
   function applyEdit() {
-    // console.log('--- [applyEdit] Start ---');
     if (!selectedDraft || !Array.isArray(selectedDraft)) {
         console.error("Selected draft is invalid or not an array", selectedDraft);
         return;
@@ -425,12 +478,11 @@ export default function EditPermutationUI() {
         workingDraftVectorsMap.set(key, [...currentVector, 0]); 
     });
 
-    let newDraftsResult; 
+    let newDraftsResult = []; 
     let newEdgesResult = [];  
 
+    // --- applyEdit draft generation logic from user's EditPermutationUI.js.txt ---
     if (isSentenceAddition) {
-      // console.log('[applyEdit] --- Sentence Addition Path ---');
-      const uniquePrecedingContextIds = [...new Set(oldArr.slice(0, prefixLen).map(c => c.id))];
       newDraftsResult = [...drafts]; 
       const seenKeys = new Set(newDraftsResult.map(d => getDraftKey(d)));
       const textToInsert = baseInsertedText;
@@ -439,14 +491,11 @@ export default function EditPermutationUI() {
           tempNewCharObjectsForSuggestion.push(newCharObj); 
           return newCharObj;
       });
-      
       drafts.forEach((dArr, draftIndex) => { 
         let updatedCharArray;
-        let wasModifiedAsChild = false; 
         const targetIdArr = dArr.map(c => c.id); 
         const targetDraftText = charArrayToString(dArr); 
         if (conditionParts.length && !conditionParts.every(condObj => idSeqExists(targetIdArr, condObj.ids))) { 
-          // console.log(`[applyEdit] Sentence Addition: Draft ${draftIndex} skipped (condition).`);
           return; 
         }
         let anchorIdIndexInDArr = -1; 
@@ -458,10 +507,9 @@ export default function EditPermutationUI() {
         if (insertionPointInDArr < targetDraftText.length && targetDraftText.charAt(insertionPointInDArr) === ' ' && (baseInsertedText.length === 0 || (baseInsertedText.length > 0 && baseInsertedText.charAt(0) !== ' '))) finalInsertionPoint = insertionPointInDArr + 1; 
         const before = dArr.slice(0, finalInsertionPoint); const after = dArr.slice(finalInsertionPoint); const insArr = masterInsArr; 
         updatedCharArray = [...before, ...insArr, ...after]; 
-        wasModifiedAsChild = true;
         
         const updatedKey = getDraftKey(updatedCharArray);
-        if (wasModifiedAsChild && !isDraftContentEmpty(updatedCharArray) && !seenKeys.has(updatedKey)) {
+        if (!isDraftContentEmpty(updatedCharArray) && !seenKeys.has(updatedKey)) {
             seenKeys.add(updatedKey);
             newDraftsResult.push(updatedCharArray);
             newEdgesResult.push({ from: dArr, to: updatedCharArray });
@@ -475,7 +523,6 @@ export default function EditPermutationUI() {
         }
       });
     } else { 
-      // console.log('[applyEdit] --- General Path (Not Sentence Addition) ---');
       const autoSpecs = getAutoConditions(oldArr, prefixLen, removedLen);
       newDraftsResult = [...drafts]; 
       const seenKeys = new Set(newDraftsResult.map(d => getDraftKey(d)));
@@ -483,10 +530,10 @@ export default function EditPermutationUI() {
       drafts.forEach(dArr => { 
         let updatedCharArray = [...dArr]; 
         const idArr = dArr.map(c => c.id);
-        let wasModifiedAsChild = false; 
+        let wasModifiedByASpec = false; 
 
         if (conditionParts.length && !conditionParts.every(condObj => idSeqExists(idArr, condObj.ids))) {
-          // console.log(`[applyEdit] General Path: Draft "${charArrayToString(dArr)}" skipped (condition).`);
+          // No modification if condition parts don't match
         } else {
             if (isReplacement) {
                 const specForReplacement = autoSpecs.find(s => s.segmentIds && findSegmentIndex(idArr, s.segmentIds) !== -1) || autoSpecs[0];
@@ -501,12 +548,12 @@ export default function EditPermutationUI() {
                             tempNewCharObjectsForSuggestion.push(newCO); return newCO;
                         });
                         updatedCharArray = [...before, ...insArr, ...after];
-                        wasModifiedAsChild = true;
+                        wasModifiedByASpec = true;
                     }
                 }
             } else { 
                 let currentWorkingArray = [...dArr]; 
-                let anySpecApplied = false;
+                let anySpecAppliedThisDraft = false;
                 for (let spec of autoSpecs) {
                     if (!spec.segmentIds) continue;
                     const currentIdArrForSpec = currentWorkingArray.map(c=>c.id);
@@ -514,7 +561,7 @@ export default function EditPermutationUI() {
                     if (pos >= 0) {
                         if (spec.type === 'remove') {
                             currentWorkingArray = [...currentWorkingArray.slice(0, pos), ...currentWorkingArray.slice(pos + spec.segmentIds.length)];
-                            anySpecApplied = true;
+                            anySpecAppliedThisDraft = true;
                         } else { 
                             const insArr = Array.from(baseInsertedText).map(ch => {
                                 const newCO = { id: generateCharId(), char: ch }; 
@@ -522,19 +569,19 @@ export default function EditPermutationUI() {
                             });
                             const insPos = pos + spec.relOffset;
                             currentWorkingArray = [...currentWorkingArray.slice(0, insPos), ...insArr, ...currentWorkingArray.slice(insPos)];
-                            anySpecApplied = true;
+                            anySpecAppliedThisDraft = true;
                         }
                     }
                 }
-                if (anySpecApplied) {
+                if (anySpecAppliedThisDraft) {
                     updatedCharArray = currentWorkingArray;
-                    wasModifiedAsChild = true;
+                    wasModifiedByASpec = true;
                 }
             }
         }
         
         const updatedKey = getDraftKey(updatedCharArray);
-        if (wasModifiedAsChild && !isDraftContentEmpty(updatedCharArray) && !seenKeys.has(updatedKey)) {
+        if (wasModifiedByASpec && !isDraftContentEmpty(updatedCharArray) && !seenKeys.has(updatedKey)) {
             seenKeys.add(updatedKey);
             newDraftsResult.push(updatedCharArray);
             newEdgesResult.push({ from: dArr, to: updatedCharArray });
@@ -549,6 +596,7 @@ export default function EditPermutationUI() {
         }
       });
     }
+    // --- End of applyEdit draft generation logic from user's file ---
     
     const finalValidKeys = new Set(newDraftsResult.map(d => getDraftKey(d)));
     const prunedDraftVectorsMap = new Map();
@@ -623,23 +671,39 @@ export default function EditPermutationUI() {
       fileContent += `--- DRAFT ${index + 1} ---\n`; 
       const draftKey = getDraftKey(draftCharObjArray);
       const vector = draftVectorsMap.get(draftKey);
-      fileContent += `Vector: ${vector ? vector.join(',') : 'N/A'}\n`;
+      const score = calculateDraftScore(draftCharObjArray, draftVectorsMap, editSuggestions); // Calculate score
+      fileContent += `Draft Score: ${score}\n`;
+      fileContent += `Vector: ${vector ? vector.join(',') : 'N/A'}\n`; // Added Vector here too for completeness
       const text = charArrayToString(draftCharObjArray); 
       const indentedText = text.split('\n').map(line => `      ${line}`).join('\n'); 
       fileContent += `Text:\n${indentedText}\n\n`;  
     });
-    fileContent += "\n--- CHARACTER DETAILS ---\n\n"; 
+    fileContent += "\n--- DATA SECTIONS ---\n\n"; // Main separator for data sections
+
+    fileContent += "--- CHARACTER DETAILS ---\n\n"; 
     drafts.forEach((draftCharObjArray, index) => { 
       fileContent += `--- DRAFT ${index + 1} ---\n`; 
-      const charDetails = draftCharObjArray.map(charObj => { 
-        let displayChar = charObj.char; 
-        if (displayChar === '\n') displayChar = '\\n'; else if (displayChar === '\t') displayChar = '\\t'; else if (displayChar === '\r') displayChar = '\\r'; else if (displayChar === "'") displayChar = "\\'"; else if (displayChar === "\\") displayChar = "\\\\"; 
-        return `'${displayChar}'(${charObj.id})`; 
-      }).join('');  
-      fileContent += `  ${charDetails}\n\n`;  
+      fileContent += `  ${serializeCharObjArray(draftCharObjArray)}\n\n`;  
     });
+
+    fileContent += "--- DRAFT VECTORS ---\n\n";
+    for (const [draftKey, vector] of draftVectorsMap.entries()) {
+        fileContent += `--- DRAFT KEY --- ${draftKey}\nVector: [${vector.join(',')}]\n\n`;
+    }
+
+    fileContent += "--- EDIT SUGGESTIONS ---\n\n";
+    editSuggestions.forEach(suggestion => {
+        fileContent += `--- SUGGESTION ${suggestion.id} ---\n`;
+        fileContent += `Score: ${suggestion.score}\n`;
+        fileContent += `SelectedDraftAtTimeOfEdit:\n  ${serializeCharObjArray(suggestion.selectedDraftAtTimeOfEdit)}\n`;
+        fileContent += `ResultingDraft:\n  ${serializeCharObjArray(suggestion.resultingDraft)}\n`;
+        fileContent += `RemovedCharIds: ${[...suggestion.removedCharIds].join(',')}\n`;
+        fileContent += `NewCharIds: ${[...suggestion.newCharIds].join(',')}\n`;
+        fileContent += `ConditionCharIds: ${[...suggestion.conditionCharIds].join(',')}\n\n`;
+    });
+
     const blob = new Blob([fileContent], { type: 'text/plain;charset=utf-8' }); 
-    const link = document.createElement('a'); link.href = URL.createObjectURL(blob); link.download = 'all_drafts_with_ids_v_vectors.txt'; 
+    const link = document.createElement('a'); link.href = URL.createObjectURL(blob); link.download = 'parallax_data.txt'; 
     document.body.appendChild(link); link.click(); document.body.removeChild(link); URL.revokeObjectURL(link.href); 
     // console.log('[saveAllDraftsToFile] File download triggered.'); 
   }
@@ -650,36 +714,29 @@ export default function EditPermutationUI() {
     reader.onload = (e) => { 
         const content = e.target.result; 
         try { 
-            const parsedData = parseDraftsFile(content);  
-            const parsedCharArrays = parsedData.drafts; 
+            const parsed = parseFullFileContent(content);  // Use the new comprehensive parser
             
-            setDrafts(parsedCharArrays); 
-            if (parsedData.maxId >= 0) globalCharCounter = parsedData.maxId + 1; else globalCharCounter = 0; 
+            setDrafts(parsed.charArrays); 
+            if (parsed.maxSeenId >= 0) globalCharCounter = parsed.maxSeenId + 1; else globalCharCounter = 0; 
 
             setHistory([]); setRedoStack([]); 
-            setEditSuggestions([]); editSuggestionCounterRef.current = 1;  
+            setEditSuggestions(parsed.editSuggestions); 
+            editSuggestionCounterRef.current = parsed.nextSuggestionId;  
             setShowSuggestionsDialog(false); 
+            setDraftVectorsMap(parsed.draftVectorsMap || new Map());
 
-            const newVectorsMap = new Map();
-            if (parsedCharArrays.length > 0) { 
-                const firstKey = getDraftKey(parsedCharArrays[0]);
-                newVectorsMap.set(firstKey, [1]); 
-                for (let i = 1; i < parsedCharArrays.length; i++) {
-                    const key = getDraftKey(parsedCharArrays[i]);
-                    newVectorsMap.set(key, [0]); 
-                }
-                setSelectedDraft(parsedCharArrays[0]); 
-                setCurrentEditText(charArrayToString(parsedCharArrays[0])); 
+            if (parsed.charArrays.length > 0) { 
+                setSelectedDraft(parsed.charArrays[0]); 
+                setCurrentEditText(charArrayToString(parsed.charArrays[0])); 
             } else {
                 setSelectedDraft([]); setCurrentEditText(""); 
             }
-            setDraftVectorsMap(newVectorsMap);
             setConditionParts([]); 
-            const newGraphEdges = parsedCharArrays.map(d => ({ from: null, to: d })); 
+            const newGraphEdges = parsed.charArrays.map(d => ({ from: null, to: d })); 
             setGraphEdges(newGraphEdges); 
-            alert("Drafts uploaded successfully!"); 
+            alert("File uploaded and parsed successfully!"); 
         } catch (error) { 
-            console.error("Failed to parse uploaded drafts file:", error); 
+            console.error("Failed to parse uploaded file:", error); 
             alert(`Failed to parse file: ${error.message}`); 
         }
         if (fileInputRef.current) fileInputRef.current.value = null; 
@@ -718,7 +775,6 @@ export default function EditPermutationUI() {
     return conditionParts.map(part => `'${part.text}'`).join(' + '); 
   };
 
-  // Handler functions for changing edit suggestion scores
   function handleIncrementScore(suggestionId) {
     setEditSuggestions(prevSuggestions =>
         prevSuggestions.map(suggestion =>
@@ -774,8 +830,8 @@ export default function EditPermutationUI() {
                 <ul className="flex flex-wrap gap-2 justify-center bg-gray-50 p-3 rounded-md shadow max-h-[400px] overflow-y-auto">
                    {stringDrafts.map((text, i) => {
                        const draftKey = getDraftKey(drafts[i]);
-                       // const vector = draftVectorsMap.get(draftKey); // Vector info for potential display
-                       // const score = calculateDraftScore(drafts[i], draftVectorsMap, editSuggestions); // Score for potential display
+                       // const vector = draftVectorsMap.get(draftKey); 
+                       // const score = calculateDraftScore(drafts[i], draftVectorsMap, editSuggestions);
                        return (
                         <li key={draftKey || i} onClick={() => { setSelectedDraft(drafts[i]); setCurrentEditText(text); setConditionParts([]); }} className={`px-2 py-1 rounded cursor-pointer shadow-sm hover:shadow-md transition-shadow ${selectedDraft && getDraftKey(drafts[i]) === getDraftKey(selectedDraft) ? 'bg-blue-300 text-blue-900' : 'bg-gray-200 hover:bg-gray-300'}`}>
                           {text.length > 50 ? text.substring(0, 47) + "..." : (text || "(empty)")}
