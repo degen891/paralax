@@ -56,6 +56,7 @@ function idSeqExists(idArr, seq) {
 // Auto-conditions: specs for removal or insertion
 function getAutoConditions(arr, offset, removedLen) {
   const text = charArrayToString(arr);
+  // console.log('[getAutoConditions] Called. text:', `"${text}"`, 'offset:', offset, 'removedLen:', removedLen);
   if (removedLen > 0) {
     const segmentIds = arr.slice(offset, offset + removedLen).map(c => c.id);
     return [{ type: 'remove', segmentIds }];
@@ -252,7 +253,6 @@ function parseFullFileContent(fileContent) {
         });
         parsedOutput.nextSuggestionId = maxParsedSuggestionId + 1;
     }
-    // console.log("[parseFullFileContent] Finished parsing:", parsedOutput);
     return parsedOutput;
 }
 
@@ -317,6 +317,7 @@ function SuggestionsDialog({ suggestions, currentIndex, onClose, onNext, onBack,
     </div>
   );
 }
+
 
 export default function EditPermutationUI() {
   const [defaultDraft, setDefaultDraft] = useState("");
@@ -387,7 +388,6 @@ export default function EditPermutationUI() {
             const firstVisible = visibleDrafts.length > 0 ? visibleDrafts[0] : [];
             setSelectedDraft(firstVisible);
             setCurrentEditText(charArrayToString(firstVisible));
-            // console.log("Selected draft was hidden by filter, selection reset.");
         }
     }
   }, [hideBadEditsActive, visibleDrafts, selectedDraft]);
@@ -853,21 +853,62 @@ export default function EditPermutationUI() {
       <div className="space-y-2 max-w-lg mx-auto">
         <label className="block text-center">Initial Draft:</label>
         <textarea value={defaultDraft} onChange={e => setDefaultDraft(e.target.value)} className="w-full p-2 border rounded" rows="10" placeholder="Type starting text…"/>
-        <div className="flex justify-center mt-2"><button onClick={initializeDraft} className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700">Set Initial Draft</button></div>
       </div>
+
+      {/* Row 1: Initialize, Upload, Download Buttons */}
       <div className="my-4 flex space-x-2 justify-center">
-        <div><input type="file" accept=".txt" style={{ display: 'none' }} ref={fileInputRef} onChange={handleFileUpload}/><button onClick={() => fileInputRef.current && fileInputRef.current.click()} className="bg-sky-600 text-white px-4 py-2 rounded hover:bg-sky-700">Upload Drafts File</button></div>
-        {drafts.length > 0 && (<button onClick={saveAllDraftsToFile} className="bg-purple-600 text-white px-4 py-2 rounded hover:bg-purple-700">Download All Drafts</button>)}
-        {editSuggestions.length > 0 && (<button onClick={() => { setCurrentSuggestionViewIndex(0); setShowSuggestionsDialog(true); }} className="bg-yellow-500 text-white px-4 py-2 rounded hover:bg-yellow-600">View Edit Suggestions ({editSuggestions.length})</button>)}
-        {hasBadEdits && ( // Conditionally render the Hide/Show Bad Edits button
-            <button 
-                onClick={() => setHideBadEditsActive(prev => !prev)} 
-                className={`px-4 py-2 rounded text-white ${hideBadEditsActive ? 'bg-red-500 hover:bg-red-600' : 'bg-indigo-500 hover:bg-indigo-600'}`}
-            >
-                {hideBadEditsActive ? "Show All Edits" : "Hide Bad Edits"}
-            </button>
+        <button 
+          onClick={initializeDraft} 
+          className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700"
+        >
+          Set Initial Draft
+        </button>
+        <div> 
+          <input 
+            type="file" 
+            accept=".txt" 
+            style={{ display: 'none' }} 
+            ref={fileInputRef} 
+            onChange={handleFileUpload}
+          />
+          <button 
+            onClick={() => fileInputRef.current && fileInputRef.current.click()} 
+            className="bg-sky-600 text-white px-4 py-2 rounded hover:bg-sky-700"
+          >
+            Upload Drafts File
+          </button>
+        </div>
+        {drafts.length > 0 && (
+          <button 
+            onClick={saveAllDraftsToFile} 
+            className="bg-purple-600 text-white px-4 py-2 rounded hover:bg-purple-700"
+          >
+            Download All Drafts
+          </button>
         )}
       </div>
+
+      {/* Row 2: View Suggestions and Hide/Show Bad Edits Buttons (Conditional) */}
+      {(editSuggestions.length > 0 || hasBadEdits) && (
+          <div className="my-2 flex space-x-2 justify-center">
+              {editSuggestions.length > 0 && (
+                <button 
+                  onClick={() => { setCurrentSuggestionViewIndex(0); setShowSuggestionsDialog(true); }} 
+                  className="bg-yellow-500 text-white px-4 py-2 rounded hover:bg-yellow-600"
+                >
+                  View Edit Suggestions ({editSuggestions.length})
+                </button>
+              )}
+              {hasBadEdits && (
+                <button 
+                    onClick={() => setHideBadEditsActive(prev => !prev)} 
+                    className={`px-4 py-2 rounded text-white ${hideBadEditsActive ? 'bg-red-500 hover:bg-red-600' : 'bg-indigo-500 hover:bg-indigo-600'}`}
+                >
+                    {hideBadEditsActive ? "Show All Edits" : "Hide Bad Edits"}
+                </button>
+              )}
+          </div>
+      )}
       
       {showSuggestionsDialog && editSuggestions.length > 0 && (
         <SuggestionsDialog 
