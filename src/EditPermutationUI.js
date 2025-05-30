@@ -281,27 +281,11 @@ function SuggestionsDialog({ suggestions, currentIndex, onClose, onNext, onBack,
           </div>
         </div>
         <div style={dialogNavigationStyle}>
-          <button onClick={onBack} disabled={currentIndex === 0} style={buttonStyle}>
-            Back
-          </button>
-          <button 
-            onClick={() => onIncrementScore(currentSuggestion.id)} 
-            style={{...voteButtonStyle, backgroundColor: '#90ee90'}}
-          >
-            Second (+1)
-          </button>
-          <button 
-            onClick={() => onDecrementScore(currentSuggestion.id)} 
-            style={{...voteButtonStyle, backgroundColor: '#ffcccb'}}
-          >
-            Oppose (-1)
-          </button>
-          <button onClick={onNext} disabled={currentIndex === suggestions.length - 1} style={buttonStyle}>
-            Next
-          </button>
-          <button onClick={onClose} style={buttonStyle}>
-            Close
-          </button>
+          <button onClick={onBack} disabled={currentIndex === 0} style={buttonStyle}>Back</button>
+          <button onClick={() => onIncrementScore(currentSuggestion.id)} style={{...voteButtonStyle, backgroundColor: '#90ee90'}}>Second (+1)</button>
+          <button onClick={() => onDecrementScore(currentSuggestion.id)} style={{...voteButtonStyle, backgroundColor: '#ffcccb'}}>Oppose (-1)</button>
+          <button onClick={onNext} disabled={currentIndex === suggestions.length - 1} style={buttonStyle}>Next</button>
+          <button onClick={onClose} style={buttonStyle}>Close</button>
         </div>
       </div>
     </div>
@@ -396,7 +380,7 @@ export default function EditPermutationUI() {
             allDraftsListRef.current.style.height = `${textareaHeight}px`;
         }
     }
-  }, [sortedAndVisibleDrafts]); 
+  }, [sortedAndVisibleDrafts]); // Re-sync if the list that sets the content of the UL changes
 
   useEffect(() => {
     if ((hideBadEditsActive || sortByScoreActive) && selectedDraft && Array.isArray(selectedDraft) && selectedDraft.length > 0) {
@@ -491,9 +475,6 @@ export default function EditPermutationUI() {
     setSortByScoreActive(false); 
   }
 
-  // This is the applyEdit function from the user's provided EditPermutationUI.js.txt
-  // (sources [1061]-[1184] or [331]-[455] from combined file)
-  // with vector logic and edit score initialization integrated.
   function applyEdit() {
     if (!selectedDraft || !Array.isArray(selectedDraft)) {
         console.error("Selected draft is invalid or not an array", selectedDraft);
@@ -501,9 +482,11 @@ export default function EditPermutationUI() {
     }
     const initialSelectedCharArrForSuggestion = JSON.parse(JSON.stringify(selectedDraft)); 
     const conditionIdsForSuggestion = new Set(conditionParts.flatMap(part => part.ids)); 
+
     const oldArr = selectedDraft; 
     const oldText = charArrayToString(oldArr);
     const newText = currentEditText;
+    
     let initialPrefixLen = 0;
     const maxPref = Math.min(oldText.length, newText.length);
     while (initialPrefixLen < maxPref && oldText[initialPrefixLen] === newText[initialPrefixLen]) initialPrefixLen++;
@@ -530,20 +513,26 @@ export default function EditPermutationUI() {
     }
     const baseInsertedText = newText.slice(prefixLen, newText.length - suffixLen);
     const removedLen = oldText.length - prefixLen - suffixLen;
+
     const actualRemovedCharIdsForSuggestion = new Set();
     if (removedLen > 0) oldArr.slice(prefixLen, prefixLen + removedLen).forEach(c => actualRemovedCharIdsForSuggestion.add(c.id));
     const tempNewCharObjectsForSuggestion = [];
+
     const isReplacement = removedLen > 0 && baseInsertedText.length > 0;
     const isSentenceAddition = removedLen === 0 && baseInsertedText.trim().length > 0 && /[.?!;:]$/.test(baseInsertedText.trim());
+    
     const E = editSuggestions.length; 
+
     const workingDraftVectorsMap = new Map();
     drafts.forEach(d => { 
         const key = getDraftKey(d);
         const currentVector = draftVectorsMap.get(key) || Array(E + 1).fill(0); 
         workingDraftVectorsMap.set(key, [...currentVector, 0]); 
     });
+
     let newDraftsResultFromUserLogic; 
     let newEdgesResultFromUserLogic = [];  
+
     if (isSentenceAddition) {
       const uniquePrecedingContextIds = [...new Set(oldArr.slice(0, prefixLen).map(c => c.id))];
       newDraftsResultFromUserLogic = [...drafts]; 
@@ -554,10 +543,15 @@ export default function EditPermutationUI() {
           tempNewCharObjectsForSuggestion.push(newCharObj); 
           return newCharObj;
       });
+      
       drafts.forEach((dArr, draftIndex) => { 
-        let updatedCharArray; let wasModifiedAsChild = false; 
-        const targetIdArr = dArr.map(c => c.id); const targetDraftText = charArrayToString(dArr); 
-        if (conditionParts.length && !conditionParts.every(condObj => idSeqExists(targetIdArr, condObj.ids))) { return; }
+        let updatedCharArray;
+        let wasModifiedAsChild = false; 
+        const targetIdArr = dArr.map(c => c.id); 
+        const targetDraftText = charArrayToString(dArr); 
+        if (conditionParts.length && !conditionParts.every(condObj => idSeqExists(targetIdArr, condObj.ids))) { 
+          return; 
+        }
         let anchorIdIndexInDArr = -1; 
         if (uniquePrecedingContextIds.length === 0) {anchorIdIndexInDArr = -2;} else { const precedingIdsSet = new Set(uniquePrecedingContextIds); for (let i = targetIdArr.length - 1; i >= 0; i--) { if (precedingIdsSet.has(targetIdArr[i])) { anchorIdIndexInDArr = i; break;}}} 
         if (anchorIdIndexInDArr === -1 && uniquePrecedingContextIds.length > 0) anchorIdIndexInDArr = -2; 
@@ -566,66 +560,166 @@ export default function EditPermutationUI() {
         let finalInsertionPoint = insertionPointInDArr; 
         if (insertionPointInDArr < targetDraftText.length && targetDraftText.charAt(insertionPointInDArr) === ' ' && (baseInsertedText.length === 0 || (baseInsertedText.length > 0 && baseInsertedText.charAt(0) !== ' '))) finalInsertionPoint = insertionPointInDArr + 1; 
         const before = dArr.slice(0, finalInsertionPoint); const after = dArr.slice(finalInsertionPoint); const insArr = masterInsArr; 
-        updatedCharArray = [...before, ...insArr, ...after]; wasModifiedAsChild = true;
+        updatedCharArray = [...before, ...insArr, ...after]; 
+        wasModifiedAsChild = true;
+        
         const updatedKey = getDraftKey(updatedCharArray);
         if (wasModifiedAsChild && !isDraftContentEmpty(updatedCharArray) && !seenKeys.has(updatedKey)) {
-            seenKeys.add(updatedKey); newDraftsResultFromUserLogic.push(updatedCharArray); newEdgesResultFromUserLogic.push({ from: dArr, to: updatedCharArray });
-            const parentKey = getDraftKey(dArr); const parentExtendedVector = workingDraftVectorsMap.get(parentKey);
-            if (parentExtendedVector) { const childVector = [...parentExtendedVector]; childVector[childVector.length - 1] = 1; workingDraftVectorsMap.set(updatedKey, childVector);}}
+            seenKeys.add(updatedKey);
+            newDraftsResultFromUserLogic.push(updatedCharArray);
+            newEdgesResultFromUserLogic.push({ from: dArr, to: updatedCharArray });
+            const parentKey = getDraftKey(dArr);
+            const parentExtendedVector = workingDraftVectorsMap.get(parentKey);
+            if (parentExtendedVector) {
+                const childVector = [...parentExtendedVector]; 
+                childVector[childVector.length - 1] = 1; 
+                workingDraftVectorsMap.set(updatedKey, childVector);
+            }
+        }
       });
     } else { 
-      const autoSpecs = getAutoConditions(oldArr, prefixLen, removedLen); newDraftsResultFromUserLogic = [...drafts]; 
+      const autoSpecs = getAutoConditions(oldArr, prefixLen, removedLen);
+      newDraftsResultFromUserLogic = [...drafts]; 
       const seenKeys = new Set(newDraftsResultFromUserLogic.map(d => getDraftKey(d)));
+      
       drafts.forEach(dArr => { 
-        let updatedCharArray = [...dArr]; const idArr = dArr.map(c => c.id); let wasModifiedByASpec = false; 
-        if (conditionParts.length && !conditionParts.every(condObj => idSeqExists(idArr, condObj.ids))) { /* No change */ } else {
+        let updatedCharArray = [...dArr]; 
+        const idArr = dArr.map(c => c.id);
+        let wasModifiedByASpec = false; 
+
+        if (conditionParts.length && !conditionParts.every(condObj => idSeqExists(idArr, condObj.ids))) {
+          // No modification
+        } else {
             if (isReplacement) {
                 const specForReplacement = autoSpecs.find(s => s.segmentIds && findSegmentIndex(idArr, s.segmentIds) !== -1) || autoSpecs[0];
-                if (specForReplacement && specForReplacement.segmentIds) { const { segmentIds } = specForReplacement; const pos = findSegmentIndex(idArr, segmentIds);
-                    if (pos >= 0) { const currentRemovedLen = segmentIds.length; const before = dArr.slice(0, pos); const after = dArr.slice(pos + currentRemovedLen);
-                        const insArr = Array.from(baseInsertedText).map(ch => { const newCO = { id: generateCharId(), char: ch }; tempNewCharObjectsForSuggestion.push(newCO); return newCO; });
-                        updatedCharArray = [...before, ...insArr, ...after]; wasModifiedByASpec = true;}}}
-            else { 
-                let currentWorkingArray = [...dArr]; let anySpecAppliedThisDraft = false;
-                for (let spec of autoSpecs) { if (!spec.segmentIds) continue; const currentIdArrForSpec = currentWorkingArray.map(c=>c.id); const pos = findSegmentIndex(currentIdArrForSpec, spec.segmentIds);
-                    if (pos >= 0) { if (spec.type === 'remove') { currentWorkingArray = [...currentWorkingArray.slice(0, pos), ...currentWorkingArray.slice(pos + spec.segmentIds.length)]; anySpecAppliedThisDraft = true;
-                        } else { const insArr = Array.from(baseInsertedText).map(ch => { const newCO = { id: generateCharId(), char: ch }; tempNewCharObjectsForSuggestion.push(newCO); return newCO;});
-                            const insPos = pos + spec.relOffset; currentWorkingArray = [...currentWorkingArray.slice(0, insPos), ...insArr, ...currentWorkingArray.slice(insPos)]; anySpecAppliedThisDraft = true;}}}
-                if (anySpecAppliedThisDraft) { updatedCharArray = currentWorkingArray; wasModifiedByASpec = true;}}}}
-        if (wasModifiedByASpec) { const updatedKey = getDraftKey(updatedCharArray);
+                if (specForReplacement && specForReplacement.segmentIds) {
+                    const { segmentIds } = specForReplacement;
+                    const pos = findSegmentIndex(idArr, segmentIds);
+                    if (pos >= 0) {
+                        const currentRemovedLen = segmentIds.length;
+                        const before = dArr.slice(0, pos); const after = dArr.slice(pos + currentRemovedLen);
+                        const insArr = Array.from(baseInsertedText).map(ch => {
+                            const newCO = { id: generateCharId(), char: ch }; 
+                            tempNewCharObjectsForSuggestion.push(newCO); return newCO;
+                        });
+                        updatedCharArray = [...before, ...insArr, ...after];
+                        wasModifiedByASpec = true;
+                    }
+                }
+            } else { 
+                let currentWorkingArray = [...dArr]; 
+                let anySpecAppliedThisDraft = false;
+                for (let spec of autoSpecs) {
+                    if (!spec.segmentIds) continue;
+                    const currentIdArrForSpec = currentWorkingArray.map(c=>c.id);
+                    const pos = findSegmentIndex(currentIdArrForSpec, spec.segmentIds);
+                    if (pos >= 0) {
+                        if (spec.type === 'remove') {
+                            currentWorkingArray = [...currentWorkingArray.slice(0, pos), ...currentWorkingArray.slice(pos + spec.segmentIds.length)];
+                            anySpecAppliedThisDraft = true;
+                        } else { 
+                            const insArr = Array.from(baseInsertedText).map(ch => {
+                                const newCO = { id: generateCharId(), char: ch }; 
+                                tempNewCharObjectsForSuggestion.push(newCO); return newCO;
+                            });
+                            const insPos = pos + spec.relOffset;
+                            currentWorkingArray = [...currentWorkingArray.slice(0, insPos), ...insArr, ...currentWorkingArray.slice(insPos)];
+                            anySpecAppliedThisDraft = true;
+                        }
+                    }
+                }
+                if (anySpecAppliedThisDraft) {
+                    updatedCharArray = currentWorkingArray;
+                    wasModifiedByASpec = true;
+                }
+            }
+        }
+        
+        if (wasModifiedByASpec) { 
+            const updatedKey = getDraftKey(updatedCharArray);
             if (!isDraftContentEmpty(updatedCharArray) && !seenKeys.has(updatedKey)) {
-                seenKeys.add(updatedKey); newDraftsResultFromUserLogic.push(updatedCharArray); newEdgesResultFromUserLogic.push({ from: dArr, to: updatedCharArray });
-                const parentKey = getDraftKey(dArr); const parentExtendedVector = workingDraftVectorsMap.get(parentKey);
-                if (parentExtendedVector) { const childVector = [...parentExtendedVector]; childVector[childVector.length - 1] = 1; workingDraftVectorsMap.set(updatedKey, childVector);}}}};
+                seenKeys.add(updatedKey);
+                newDraftsResultFromUserLogic.push(updatedCharArray);
+                newEdgesResultFromUserLogic.push({ from: dArr, to: updatedCharArray });
+
+                const parentKey = getDraftKey(dArr);
+                const parentExtendedVector = workingDraftVectorsMap.get(parentKey);
+                if (parentExtendedVector) {
+                    const childVector = [...parentExtendedVector];
+                    childVector[childVector.length - 1] = 1; 
+                    workingDraftVectorsMap.set(updatedKey, childVector);
+                }
+            }
+        }
       });
     }
+    
     const finalValidKeys = new Set(newDraftsResultFromUserLogic.map(d => getDraftKey(d)));
     const prunedDraftVectorsMap = new Map();
-    for (const [key, vector] of workingDraftVectorsMap.entries()) { if (finalValidKeys.has(key)) prunedDraftVectorsMap.set(key, vector); }
+    for (const [key, vector] of workingDraftVectorsMap.entries()) {
+        if (finalValidKeys.has(key)) {
+            prunedDraftVectorsMap.set(key, vector);
+        }
+    }
     setDraftVectorsMap(prunedDraftVectorsMap);
+
     saveHistory(newDraftsResultFromUserLogic, newEdgesResultFromUserLogic); 
+    
     const edgeFromSelected = newEdgesResultFromUserLogic.find(edge => edge.from === oldArr);
-    if (edgeFromSelected) { setSelectedDraft(edgeFromSelected.to); setCurrentEditText(charArrayToString(edgeFromSelected.to));
-    } else if (newDraftsResultFromUserLogic.length > 0) { const currentSelectedKey = getDraftKey(oldArr); const stillExists = newDraftsResultFromUserLogic.find(d => getDraftKey(d) === currentSelectedKey);
-        if (stillExists) { setSelectedDraft(stillExists); setCurrentEditText(charArrayToString(stillExists));
-        } else if (newEdgesResultFromUserLogic.length === 1 && newDraftsResultFromUserLogic.includes(newEdgesResultFromUserLogic[0].to)) { setSelectedDraft(newEdgesResultFromUserLogic[0].to); setCurrentEditText(charArrayToString(newEdgesResultFromUserLogic[0].to));
-        } else { const firstDraftInResult = newDraftsResultFromUserLogic.find(d => d); 
-            if (firstDraftInResult) { setSelectedDraft(firstDraftInResult); setCurrentEditText(charArrayToString(firstDraftInResult));
-            } else { setSelectedDraft([]); setCurrentEditText(""); }}}
-    else { setSelectedDraft([]); setCurrentEditText(""); }
+    if (edgeFromSelected) {
+        setSelectedDraft(edgeFromSelected.to); 
+        setCurrentEditText(charArrayToString(edgeFromSelected.to));
+    } else if (newDraftsResultFromUserLogic.length > 0) {
+        const currentSelectedKey = getDraftKey(oldArr);
+        const stillExists = newDraftsResultFromUserLogic.find(d => getDraftKey(d) === currentSelectedKey);
+        if (stillExists) {
+            setSelectedDraft(stillExists);
+            setCurrentEditText(charArrayToString(stillExists));
+        } else if (newEdgesResultFromUserLogic.length === 1 && newDraftsResultFromUserLogic.includes(newEdgesResultFromUserLogic[0].to)) { 
+             setSelectedDraft(newEdgesResultFromUserLogic[0].to);
+             setCurrentEditText(charArrayToString(newEdgesResultFromUserLogic[0].to));
+        } else { 
+            const firstDraftInResult = newDraftsResultFromUserLogic.find(d => d); 
+            if (firstDraftInResult) {
+                setSelectedDraft(firstDraftInResult);
+                setCurrentEditText(charArrayToString(firstDraftInResult));
+            } else { 
+                setSelectedDraft([]); setCurrentEditText("");
+            }
+        }
+    } else { 
+        setSelectedDraft([]);
+        setCurrentEditText("");
+    }
+
     let resultingDraftCharArrayForSuggestion = null; 
     const finalOriginatingEdge = newEdgesResultFromUserLogic.find(edge => edge.from === oldArr); 
     if (finalOriginatingEdge) resultingDraftCharArrayForSuggestion = finalOriginatingEdge.to; 
-    else { const prefixChars = oldArr.slice(0, prefixLen); const suffixChars = oldArr.slice(oldArr.length - suffixLen); resultingDraftCharArrayForSuggestion = [...prefixChars, ...tempNewCharObjectsForSuggestion, ...suffixChars]; if (isDraftContentEmpty(resultingDraftCharArrayForSuggestion)) console.log('[applyEdit] Suggestion: Resulting draft (manually constructed) is empty.'); }
+    else { 
+        const prefixChars = oldArr.slice(0, prefixLen); const suffixChars = oldArr.slice(oldArr.length - suffixLen); 
+        resultingDraftCharArrayForSuggestion = [...prefixChars, ...tempNewCharObjectsForSuggestion, ...suffixChars]; 
+        if (isDraftContentEmpty(resultingDraftCharArrayForSuggestion)) console.log('[applyEdit] Suggestion: Resulting draft (manually constructed) is empty.'); 
+    }
     if (!Array.isArray(resultingDraftCharArrayForSuggestion)) resultingDraftCharArrayForSuggestion = []; 
-    const newSuggestionEntry = { id: editSuggestionCounterRef.current, selectedDraftAtTimeOfEdit: initialSelectedCharArrForSuggestion, resultingDraft: resultingDraftCharArrayForSuggestion, removedCharIds: actualRemovedCharIdsForSuggestion, newCharIds: new Set(tempNewCharObjectsForSuggestion.map(o => o.id)), conditionCharIds: conditionIdsForSuggestion, score: 1 };
+
+    const newSuggestionEntry = { 
+        id: editSuggestionCounterRef.current, 
+        selectedDraftAtTimeOfEdit: initialSelectedCharArrForSuggestion, 
+        resultingDraft: resultingDraftCharArrayForSuggestion, 
+        removedCharIds: actualRemovedCharIdsForSuggestion, 
+        newCharIds: new Set(tempNewCharObjectsForSuggestion.map(o => o.id)), 
+        conditionCharIds: conditionIdsForSuggestion, 
+        score: 1 
+    };
     setEditSuggestions(prevSuggestions => [...prevSuggestions, newSuggestionEntry]); 
     editSuggestionCounterRef.current += 1; 
+    
     setConditionParts([]); 
   }
 
   function saveAllDraftsToFile() { 
     if (drafts.length === 0) { alert("No drafts to save!"); return; } 
+    
     let fileContent = "--- TEXTS ---\n\n";
     drafts.forEach((draftCharArr, index) => {
         fileContent += `--- DRAFT ${index + 1} ---\n`;
@@ -635,17 +729,21 @@ export default function EditPermutationUI() {
         const indentedText = text.split('\n').map(line => `    ${line}`).join('\n');
         fileContent += `Text:\n${indentedText}\n\n`;
     });
+
     fileContent += "--- DATA SECTIONS ---\n\n";
+
     fileContent += "--- CHARACTER DETAILS ---\n\n";
     drafts.forEach((draftCharArr, index) => {
         fileContent += `--- DRAFT ${index + 1} ---\n`;
         fileContent += `  ${serializeCharObjArray(draftCharArr)}\n\n`;
     });
+
     fileContent += "--- DRAFT VECTORS ---\n\n";
     for (const [draftKey, vector] of draftVectorsMap.entries()) {
         fileContent += `--- DRAFT KEY --- ${draftKey}\n`;
         fileContent += `Vector: [${vector.join(',')}]\n\n`;
     }
+
     fileContent += "--- EDIT SUGGESTIONS ---\n\n";
     editSuggestions.forEach(suggestion => {
         fileContent += `--- SUGGESTION ${suggestion.id} ---\n`;
@@ -656,6 +754,7 @@ export default function EditPermutationUI() {
         fileContent += `NewCharIds: ${[...suggestion.newCharIds].join(',')}\n`;
         fileContent += `ConditionCharIds: ${[...suggestion.conditionCharIds].join(',')}\n\n`;
     });
+    
     const blob = new Blob([fileContent], { type: 'text/plain;charset=utf-8' }); 
     const link = document.createElement('a'); link.href = URL.createObjectURL(blob); link.download = 'parallax_full_data.txt'; 
     document.body.appendChild(link); link.click(); document.body.removeChild(link); URL.revokeObjectURL(link.href); 
@@ -668,13 +767,16 @@ export default function EditPermutationUI() {
         const content = e.target.result; 
         try { 
             const parsed = parseFullFileContent(content); 
+            
             setDrafts(parsed.charArrays); 
             if (parsed.maxSeenId >= 0) globalCharCounter = parsed.maxSeenId + 1; else globalCharCounter = 0; 
+
             setHistory([]); setRedoStack([]); 
             setEditSuggestions(parsed.editSuggestions); 
             editSuggestionCounterRef.current = parsed.nextSuggestionId;  
             setShowSuggestionsDialog(false); 
             setDraftVectorsMap(parsed.draftVectorsMap || new Map());
+
             if (parsed.charArrays.length > 0) { 
                 setSelectedDraft(parsed.charArrays[0]); 
                 setCurrentEditText(charArrayToString(parsed.charArrays[0])); 
@@ -876,7 +978,7 @@ export default function EditPermutationUI() {
                     }
                 </h2>
                 <textarea ref={draftBoxRef} onMouseUp={handleSelect} value={currentEditText} onChange={e => setCurrentEditText(e.target.value)} className="w-full p-2 border rounded whitespace-pre-wrap shadow-inner" rows="10"/>
-                {/* Submit/Undo/Redo buttons are now BEFORE the Conditions display */}
+                 {/* Submit/Undo/Redo buttons are now BEFORE the Conditions display */}
                 <div className="flex space-x-2 mt-4 justify-center">
                   <button 
                     onClick={applyEdit} 
