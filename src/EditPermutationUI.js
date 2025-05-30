@@ -191,7 +191,7 @@ function parseFullFileContent(fileContent) {
             for (let i = 1; i < lines.length; i++) { const trimmedLine = lines[i].trim(); if (trimmedLine.startsWith("'") && trimmedLine.endsWith(")") && trimmedLine.includes("(") && trimmedLine.includes("char-")) { actualDetailsLine = trimmedLine; break; }}
             if (actualDetailsLine) parsedOutput.charArrays.push(deserializeCharObjArray(actualDetailsLine, updateMaxId));
         });
-    }
+    } else { console.warn("CHARACTER DETAILS section not found or empty."); }
     const draftVectorsContent = extractSectionContent(sections.DRAFT_VECTORS);
     if (draftVectorsContent) {
         const vectorEntries = draftVectorsContent.split("--- DRAFT KEY ---").map(s => s.trim()).filter(s => s);
@@ -307,7 +307,7 @@ export default function EditPermutationUI() {
   const editSuggestionCounterRef = useRef(1);
   const [draftVectorsMap, setDraftVectorsMap] = useState(new Map()); 
   const [hideBadEditsActive, setHideBadEditsActive] = useState(false);
-  const [sortByScoreActive, setSortByScoreActive] = useState(false); // New state for sorting
+  const [sortByScoreActive, setSortByScoreActive] = useState(false); 
 
   const [showSuggestionsDialog, setShowSuggestionsDialog] = useState(false);
   const [currentSuggestionViewIndex, setCurrentSuggestionViewIndex] = useState(0);
@@ -330,7 +330,7 @@ export default function EditPermutationUI() {
     }, []);
   }, [editSuggestions, hideBadEditsActive]);
 
-  const visibleDraftsUnsorted = useMemo(() => { // Renamed to clarify it's unsorted at this stage
+  const visibleDraftsUnsorted = useMemo(() => { 
     if (!hideBadEditsActive || badSuggestionIndices.length === 0) {
         return drafts; 
     }
@@ -373,45 +373,34 @@ export default function EditPermutationUI() {
 
 
   useEffect(() => {
-    if (hideBadEditsActive && selectedDraft && Array.isArray(selectedDraft) && selectedDraft.length > 0) {
-        // Use sortedAndVisibleDrafts for checking visibility after sorting might also be active
-        const isSelectedDraftVisible = sortedAndVisibleDrafts.some(d => getDraftKey(d) === getDraftKey(selectedDraft));
-        if (!isSelectedDraftVisible) {
-            const firstVisible = sortedAndVisibleDrafts.length > 0 ? sortedAndVisibleDrafts[0] : [];
-            setSelectedDraft(firstVisible);
-            setCurrentEditText(charArrayToString(firstVisible));
+    if ((hideBadEditsActive || sortByScoreActive) && selectedDraft && Array.isArray(selectedDraft) && selectedDraft.length > 0) {
+        const isSelectedDraftVisibleAndSorted = sortedAndVisibleDrafts.some(d => getDraftKey(d) === getDraftKey(selectedDraft));
+        if (!isSelectedDraftVisibleAndSorted) {
+            const firstAvailable = sortedAndVisibleDrafts.length > 0 ? sortedAndVisibleDrafts[0] : [];
+            setSelectedDraft(firstAvailable);
+            setCurrentEditText(charArrayToString(firstAvailable));
         }
     }
-  }, [hideBadEditsActive, sortByScoreActive, sortedAndVisibleDrafts, selectedDraft]); // Added sortByScoreActive dependency
+  }, [hideBadEditsActive, sortByScoreActive, sortedAndVisibleDrafts, selectedDraft]);
 
 
   const displayStringDrafts = sortedAndVisibleDrafts.map(arr => charArrayToString(arr));
   
   const displayGraphEdges = useMemo(() => {
-    // Graph edges should be based on the set of drafts *before* UI sorting, but *after* bad edit filtering
     const currentStringEdgesForVisible = graphEdges.map(({ from, to }) => ({
         from: from ? charArrayToString(from) : null,
         to: to ? charArrayToString(to) : "",
     }));
 
-    if (!hideBadEditsActive || badSuggestionIndices.length === 0) { // If not hiding, or nothing to hide based on bad scores
-        // If also not sorting, use original stringEdges (derived from all drafts)
-        // If sorting IS active, we need edges for the sorted list of *all* drafts
-        // This part is tricky: graph usually shows all connections.
-        // For now, let's make graph reflect the `visibleDraftsUnsorted` set.
-        const visibleDraftContentStrings = new Set(visibleDraftsUnsorted.map(d => charArrayToString(d)));
-        return graphEdges.filter(edge => {
-             const toNodeVisible = edge.to && visibleDraftContentStrings.has(charArrayToString(edge.to));
-             const fromNodeVisible = edge.from === null || (edge.from && visibleDraftContentStrings.has(charArrayToString(edge.from)));
-             return fromNodeVisible && toNodeVisible;
-         }).map(({ from, to }) => ({ 
-             from: from ? charArrayToString(from) : null,
-             to: charArrayToString(to),
-         }));
+    // Graph edges should reflect the visibility filter, but not necessarily the sorting order for layout
+    const baseVisibleSet = visibleDraftsUnsorted; 
+    if (!hideBadEditsActive || badSuggestionIndices.length === 0) { 
+        // If not actively hiding bad edits, or no bad edits to hide, graph can show all original edges
+        // or edges related to all *currently loaded* drafts.
+        // For simplicity, let's filter based on `baseVisibleSet` to match nodes.
     }
     
-    // If hiding bad edits:
-    const visibleDraftContentStrings = new Set(visibleDraftsUnsorted.map(d => charArrayToString(d))); // Based on filtered, unsorted
+    const visibleDraftContentStrings = new Set(baseVisibleSet.map(d => charArrayToString(d)));
     return graphEdges.filter(edge => {
         const toNodeVisible = edge.to && visibleDraftContentStrings.has(charArrayToString(edge.to));
         const fromNodeVisible = edge.from === null || (edge.from && visibleDraftContentStrings.has(charArrayToString(edge.from)));
@@ -420,7 +409,7 @@ export default function EditPermutationUI() {
         from: from ? charArrayToString(from) : null,
         to: charArrayToString(to),
     }));
-  }, [visibleDraftsUnsorted, graphEdges, hideBadEditsActive, badSuggestionIndices]);
+  }, [visibleDraftsUnsorted, graphEdges, hideBadEditsActive, badSuggestionIndices]); // Depends on the non-sorted visible set
 
 
   useEffect(() => {
@@ -485,15 +474,10 @@ export default function EditPermutationUI() {
     editSuggestionCounterRef.current = 1; 
     setShowSuggestionsDialog(false); 
     setHideBadEditsActive(false); 
-    setSortByScoreActive(false); // Reset sort on init
+    setSortByScoreActive(false); 
   }
 
   function applyEdit() {
-    // This function should be the one from your confirmed working version (EditPermutationUI.js.txt)
-    // with the vector logic correctly integrated as in the previous step.
-    // For brevity, I'm not repeating the entire complex applyEdit, but it should be the
-    // known good version that handles permutations correctly and updates workingDraftVectorsMap.
-    // console.log('--- [applyEdit] Start ---');
     if (!selectedDraft || !Array.isArray(selectedDraft)) {
         console.error("Selected draft is invalid or not an array", selectedDraft);
         return;
@@ -903,34 +887,15 @@ export default function EditPermutationUI() {
         )}
       </div>
 
-      {/* Row 2: View Suggestions and Hide/Show Bad Edits Buttons (Conditional) */}
-      {(editSuggestions.length > 0 || hasBadEdits) && ( 
+      {/* Row for View Edit Suggestions (if any suggestions exist) */}
+      {editSuggestions.length > 0 && (
           <div className="my-2 flex space-x-2 justify-center">
-              {editSuggestions.length > 0 && (
-                <button 
-                  onClick={() => { setCurrentSuggestionViewIndex(0); setShowSuggestionsDialog(true); }} 
-                  className="bg-yellow-500 text-white px-4 py-2 rounded hover:bg-yellow-600"
-                >
-                  View Edit Suggestions ({editSuggestions.length})
-                </button>
-              )}
-              {hasBadEdits && ( // Button for Hide/Show Bad Edits
-                <button 
-                    onClick={() => setHideBadEditsActive(prev => !prev)} 
-                    className={`px-4 py-2 rounded text-white ${hideBadEditsActive ? 'bg-red-500 hover:bg-red-600' : 'bg-indigo-500 hover:bg-indigo-600'}`}
-                >
-                    {hideBadEditsActive ? "Show All Edits" : "Hide Bad Edits"}
-                </button>
-              )}
-              {/* New Sort Button - visible if editSuggestions exist */}
-              {editSuggestions.length > 0 && (
-                <button
-                  onClick={() => setSortByScoreActive(prev => !prev)}
-                  className={`px-4 py-2 rounded text-white ${sortByScoreActive ? 'bg-teal-600 hover:bg-teal-700' : 'bg-teal-500 hover:bg-teal-600'}`}
-                >
-                  {sortByScoreActive ? "Undo Draft Score Sort" : "Sort by Draft Score"}
-                </button>
-              )}
+              <button 
+                onClick={() => { setCurrentSuggestionViewIndex(0); setShowSuggestionsDialog(true); }} 
+                className="bg-yellow-500 text-white px-4 py-2 rounded hover:bg-yellow-600"
+              >
+                View Edit Suggestions ({editSuggestions.length})
+              </button>
           </div>
       )}
       
@@ -950,11 +915,12 @@ export default function EditPermutationUI() {
         <>
           <div className="max-w-6xl mx-auto px-4">
             <div className="flex flex-col lg:flex-row lg:space-x-6 justify-center items-start">
+              {/* --- LEFT COLUMN --- */}
               <div className="lg:flex-1 w-full mb-6 lg:mb-0">
                 <h2 className="text-xl font-semibold text-center mb-2">All Drafts ({displayStringDrafts.length}):</h2>
                 <ul className="flex flex-wrap gap-2 justify-center bg-gray-50 p-3 rounded-md shadow max-h-[400px] overflow-y-auto">
                    {displayStringDrafts.map((text, i) => {
-                       const actualDraftCharArr = sortedAndVisibleDrafts[i]; // Use sorted & visible list
+                       const actualDraftCharArr = sortedAndVisibleDrafts[i];
                        const draftKey = getDraftKey(actualDraftCharArr);
                        return (
                         <li key={draftKey || i} 
@@ -969,7 +935,29 @@ export default function EditPermutationUI() {
                        );
                    })}
                 </ul>
-              </div>
+                {/* --- NEW LOCATION for Hide/Sort Buttons, below the UL --- */}
+                {(hasBadEdits || (editSuggestions.length > 0 && visibleDraftsUnsorted.length > 0)) && ( 
+                    <div className="mt-4 flex space-x-2 justify-center"> 
+                        {hasBadEdits && (
+                            <button 
+                                onClick={() => setHideBadEditsActive(prev => !prev)} 
+                                className={`px-4 py-2 rounded text-white ${hideBadEditsActive ? 'bg-red-500 hover:bg-red-600' : 'bg-indigo-500 hover:bg-indigo-600'}`}
+                            >
+                                {hideBadEditsActive ? "Show All Edits" : "Hide Bad Edits"}
+                            </button>
+                        )}
+                        {editSuggestions.length > 0 && visibleDraftsUnsorted.length > 0 && ( 
+                            <button
+                              onClick={() => setSortByScoreActive(prev => !prev)}
+                              className={`px-4 py-2 rounded text-white ${sortByScoreActive ? 'bg-teal-600 hover:bg-teal-700' : 'bg-teal-500 hover:bg-teal-600'}`}
+                            >
+                              {sortByScoreActive ? "Undo Draft Score Sort" : "Sort by Draft Score"}
+                            </button>
+                        )}
+                    </div>
+                )}
+              </div> {/* End of Left Column */}
+
              <div className="lg:flex-1 w-full">
                 <h2 className="text-xl font-semibold text-center mb-2">Selected Draft
                     {selectedDraft && Array.isArray(selectedDraft) && selectedDraft.length > 0 && 
@@ -1004,7 +992,6 @@ export default function EditPermutationUI() {
           <div className="max-w-4xl mx-auto mt-8">
             <h2 className="text-xl font-semibold text-center mb-2">Version Graph:</h2>
             <VersionGraph drafts={displayStringDrafts} edges={displayGraphEdges} onNodeClick={text => { 
-                // Use sortedAndVisibleDrafts to find the correct object when a node is clicked
                 const clickedDraftObj = sortedAndVisibleDrafts.find(d => charArrayToString(d) === text); 
                 if (clickedDraftObj) { 
                     setSelectedDraft(clickedDraftObj); 
