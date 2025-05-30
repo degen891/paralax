@@ -302,6 +302,7 @@ export default function EditPermutationUI() {
   const [graphEdges, setGraphEdges] = useState([]); 
   const draftBoxRef = useRef(null);
   const fileInputRef = useRef(null); 
+  const allDraftsListRef = useRef(null); // New ref for the All Drafts ul
 
   const [editSuggestions, setEditSuggestions] = useState([]);
   const editSuggestionCounterRef = useRef(1);
@@ -371,6 +372,15 @@ export default function EditPermutationUI() {
     return draftsWithSortData.map(item => item.draftObject);
   }, [visibleDraftsUnsorted, sortByScoreActive, draftVectorsMap, editSuggestions]);
 
+  // Effect to synchronize All Drafts list height with Textarea height
+  useEffect(() => {
+    if (draftBoxRef.current && allDraftsListRef.current) {
+        const textareaHeight = draftBoxRef.current.offsetHeight;
+        if (textareaHeight > 0) {
+            allDraftsListRef.current.style.height = `${textareaHeight}px`;
+        }
+    }
+  }, [visibleDraftsUnsorted, sortedAndVisibleDrafts]); // Re-run if the list of visible/sorted drafts changes
 
   useEffect(() => {
     if ((hideBadEditsActive || sortByScoreActive) && selectedDraft && Array.isArray(selectedDraft) && selectedDraft.length > 0) {
@@ -387,20 +397,8 @@ export default function EditPermutationUI() {
   const displayStringDrafts = sortedAndVisibleDrafts.map(arr => charArrayToString(arr));
   
   const displayGraphEdges = useMemo(() => {
-    const currentStringEdgesForVisible = graphEdges.map(({ from, to }) => ({
-        from: from ? charArrayToString(from) : null,
-        to: to ? charArrayToString(to) : "",
-    }));
-
-    // Graph edges should reflect the visibility filter, but not necessarily the sorting order for layout
-    const baseVisibleSet = visibleDraftsUnsorted; 
-    if (!hideBadEditsActive || badSuggestionIndices.length === 0) { 
-        // If not actively hiding bad edits, or no bad edits to hide, graph can show all original edges
-        // or edges related to all *currently loaded* drafts.
-        // For simplicity, let's filter based on `baseVisibleSet` to match nodes.
-    }
-    
-    const visibleDraftContentStrings = new Set(baseVisibleSet.map(d => charArrayToString(d)));
+    const baseVisibleSetForGraph = visibleDraftsUnsorted; // Graph structure based on filtering, not UI sort order
+    const visibleDraftContentStrings = new Set(baseVisibleSetForGraph.map(d => charArrayToString(d)));
     return graphEdges.filter(edge => {
         const toNodeVisible = edge.to && visibleDraftContentStrings.has(charArrayToString(edge.to));
         const fromNodeVisible = edge.from === null || (edge.from && visibleDraftContentStrings.has(charArrayToString(edge.from)));
@@ -409,7 +407,7 @@ export default function EditPermutationUI() {
         from: from ? charArrayToString(from) : null,
         to: charArrayToString(to),
     }));
-  }, [visibleDraftsUnsorted, graphEdges, hideBadEditsActive, badSuggestionIndices]); // Depends on the non-sorted visible set
+  }, [visibleDraftsUnsorted, graphEdges]);
 
 
   useEffect(() => {
@@ -918,7 +916,7 @@ export default function EditPermutationUI() {
               {/* --- LEFT COLUMN --- */}
               <div className="lg:flex-1 w-full mb-6 lg:mb-0">
                 <h2 className="text-xl font-semibold text-center mb-2">All Drafts ({displayStringDrafts.length}):</h2>
-                <ul className="flex flex-wrap gap-2 justify-center bg-gray-50 p-3 rounded-md shadow max-h-[400px] overflow-y-auto">
+                <ul ref={allDraftsListRef} className="flex flex-wrap gap-2 justify-center bg-gray-50 p-3 rounded-md shadow max-h-[400px] overflow-y-auto" /* max-h-[400px] might be overridden by JS if textarea is taller */>
                    {displayStringDrafts.map((text, i) => {
                        const actualDraftCharArr = sortedAndVisibleDrafts[i];
                        const draftKey = getDraftKey(actualDraftCharArr);
@@ -935,7 +933,7 @@ export default function EditPermutationUI() {
                        );
                    })}
                 </ul>
-                {/* --- NEW LOCATION for Hide/Sort Buttons, below the UL --- */}
+                {/* --- Buttons below "All Drafts" list --- */}
                 {(hasBadEdits || (editSuggestions.length > 0 && visibleDraftsUnsorted.length > 0)) && ( 
                     <div className="mt-4 flex space-x-2 justify-center"> 
                         {hasBadEdits && (
