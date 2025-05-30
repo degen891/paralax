@@ -237,7 +237,6 @@ const comparisonContainerStyle = { display:'flex',justifyContent:'space-between'
 const columnStyle = { width:'48%',border:'1px solid #eee',padding:'10px',borderRadius:'4px',backgroundColor:'#f9f9f9',display:'flex',flexDirection:'column'};
 const preStyle = { whiteSpace:'pre-wrap',wordWrap:'break-word',margin:0,backgroundColor:'white',padding:'8px',border:'1px solid #ddd',borderRadius:'4px',flexGrow:1,overflowY:'auto'};
 const dialogNavigationStyle = { display:'flex',justifyContent:'space-around', alignItems:'center', marginTop:'10px',paddingTop:'10px',borderTop:'1px solid #eee'};
-// These are the original styles for dialog buttons
 const voteButtonStyle = { padding:'8px 12px', borderRadius:'4px', border:'1px solid #ccc', cursor:'pointer', margin: '0 5px'};
 const buttonStyle = { padding:'8px 15px', borderRadius:'4px', border:'1px solid #ccc', cursor:'pointer'};
 
@@ -281,7 +280,7 @@ function SuggestionsDialog({ suggestions, currentIndex, onClose, onNext, onBack,
             <pre style={preStyle}>{comp2Highlighted}</pre>
           </div>
         </div>
-        {/* Reverted Dialog Button Styles */}
+        {/* DIALOG BUTTONS REVERTED TO ORIGINAL STYLING */}
         <div style={dialogNavigationStyle}>
           <button onClick={onBack} disabled={currentIndex === 0} style={buttonStyle}>
             Back
@@ -494,7 +493,6 @@ export default function EditPermutationUI() {
   }
 
   // This is the applyEdit function from the user's provided EditPermutationUI.js.txt
-  // (sources [1061]-[1184] or [331]-[455] from combined file)
   // with vector logic and edit score initialization integrated.
   function applyEdit() {
     if (!selectedDraft || !Array.isArray(selectedDraft)) {
@@ -593,7 +591,7 @@ export default function EditPermutationUI() {
                     if (pos >= 0) { if (spec.type === 'remove') { currentWorkingArray = [...currentWorkingArray.slice(0, pos), ...currentWorkingArray.slice(pos + spec.segmentIds.length)]; anySpecAppliedThisDraft = true;
                         } else { const insArr = Array.from(baseInsertedText).map(ch => { const newCO = { id: generateCharId(), char: ch }; tempNewCharObjectsForSuggestion.push(newCO); return newCO;});
                             const insPos = pos + spec.relOffset; currentWorkingArray = [...currentWorkingArray.slice(0, insPos), ...insArr, ...currentWorkingArray.slice(insPos)]; anySpecAppliedThisDraft = true;}}}
-                if (anySpecAppliedThisDraft) { updatedCharArray = currentWorkingArray; wasModifiedByASpec = true;}}}
+                if (anySpecAppliedThisDraft) { updatedCharArray = currentWorkingArray; wasModifiedByASpec = true;}}}}
         if (wasModifiedByASpec) { const updatedKey = getDraftKey(updatedCharArray);
             if (!isDraftContentEmpty(updatedCharArray) && !seenKeys.has(updatedKey)) {
                 seenKeys.add(updatedKey); newDraftsResultFromUserLogic.push(updatedCharArray); newEdgesResultFromUserLogic.push({ from: dArr, to: updatedCharArray });
