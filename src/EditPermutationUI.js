@@ -237,8 +237,8 @@ const comparisonContainerStyle = { display:'flex',justifyContent:'space-between'
 const columnStyle = { width:'48%',border:'1px solid #eee',padding:'10px',borderRadius:'4px',backgroundColor:'#f9f9f9',display:'flex',flexDirection:'column'};
 const preStyle = { whiteSpace:'pre-wrap',wordWrap:'break-word',margin:0,backgroundColor:'white',padding:'8px',border:'1px solid #ddd',borderRadius:'4px',flexGrow:1,overflowY:'auto'};
 const dialogNavigationStyle = { display:'flex',justifyContent:'space-around', alignItems:'center', marginTop:'10px',paddingTop:'10px',borderTop:'1px solid #eee'};
-const voteButtonStyle = { padding:'8px 12px', borderRadius:'4px', border:'1px solid #ccc', cursor:'pointer', margin: '0 5px'};
-const buttonStyle = { padding:'8px 15px', borderRadius:'4px', border:'1px solid #ccc', cursor:'pointer'};
+const voteButtonStyle = { padding:'8px 12px', borderRadius:'4px', border:'1px solid #ccc', cursor:'pointer', margin: '0 5px'}; // Original style
+const buttonStyle = { padding:'8px 15px', borderRadius:'4px', border:'1px solid #ccc', cursor:'pointer'}; // Original style
 
 function SuggestionsDialog({ suggestions, currentIndex, onClose, onNext, onBack, onIncrementScore, onDecrementScore }) {
   if (!suggestions || suggestions.length === 0) return null;
@@ -280,13 +280,14 @@ function SuggestionsDialog({ suggestions, currentIndex, onClose, onNext, onBack,
             <pre style={preStyle}>{comp2Highlighted}</pre>
           </div>
         </div>
+        {/* Dialog Buttons using original style objects */}
         <div style={dialogNavigationStyle}>
           <button onClick={onBack} disabled={currentIndex === 0} style={buttonStyle}>
             Back
           </button>
           <button 
             onClick={() => onIncrementScore(currentSuggestion.id)} 
-            style={{...voteButtonStyle, backgroundColor: '#90ee90'}}
+            style={{...voteButtonStyle, backgroundColor: '#90ee90'}} 
           >
             Second (+1)
           </button>
