@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo } from "react"; // Added useMemo
+import React, { useState, useEffect, useRef, useMemo } from "react";
 import VersionGraph from "./VersionGraph";
 
 // --- Character ID tracking ---
@@ -16,9 +16,7 @@ function charArrayToString(arr) {
 // Helper to generate a unique key for a draft based on its char IDs
 function getDraftKey(charArr) {
   if (!Array.isArray(charArr) || charArr.length === 0) {
-    // Ensure a consistent-ish key for potentially empty/invalid arrays if they can exist
-    // However, drafts state should ideally not contain null/undefined items.
-    return `invalid-draft-key-${Math.random()}`; 
+    return `empty-draft-${Date.now()}-${Math.random()}`; 
   }
   return charArr.map(c => c.id).join(',');
 }
@@ -220,7 +218,7 @@ function parseFullFileContent(fileContent) {
             const draftKey = lines[0].trim();
             if (lines[1] && lines[1].startsWith("Vector: ")) {
                 const vectorStr = lines[1].substring("Vector: [".length, lines[1].length - 1); 
-                if (draftKey && typeof vectorStr === 'string') { // Check if vectorStr is defined
+                if (draftKey && typeof vectorStr === 'string') { 
                     const vector = vectorStr === "" ? [] : vectorStr.split(',').map(Number);
                     parsedOutput.draftVectorsMap.set(draftKey, vector);
                 }
@@ -233,6 +231,7 @@ function parseFullFileContent(fileContent) {
         const suggestionBlocks = editSuggestionsContent.split("--- SUGGESTION ");
         suggestionBlocks.forEach(block => {
             if (!block.trim() || !/^\d+\s*---/.test(block.trimStart())) return;
+            
             const suggestionData = { removedCharIds: new Set(), newCharIds: new Set(), conditionCharIds: new Set(), score: 0, selectedDraftAtTimeOfEdit: [], resultingDraft: [] }; 
             const idMatch = block.match(/^(\d+)\s*---/);
             if (idMatch) suggestionData.id = parseInt(idMatch[1], 10); else return;
@@ -253,6 +252,7 @@ function parseFullFileContent(fileContent) {
         });
         parsedOutput.nextSuggestionId = maxParsedSuggestionId + 1;
     }
+    // console.log("[parseFullFileContent] Finished parsing:", parsedOutput);
     return parsedOutput;
 }
 
@@ -318,7 +318,6 @@ function SuggestionsDialog({ suggestions, currentIndex, onClose, onNext, onBack,
   );
 }
 
-
 export default function EditPermutationUI() {
   const [defaultDraft, setDefaultDraft] = useState("");
   const [drafts, setDrafts] = useState([]); 
@@ -334,12 +333,21 @@ export default function EditPermutationUI() {
   const [editSuggestions, setEditSuggestions] = useState([]);
   const editSuggestionCounterRef = useRef(1);
   const [draftVectorsMap, setDraftVectorsMap] = useState(new Map()); 
-  const [hideBadEditsActive, setHideBadEditsActive] = useState(false); // New state for filter
+  const [hideBadEditsActive, setHideBadEditsActive] = useState(false);
 
   const [showSuggestionsDialog, setShowSuggestionsDialog] = useState(false);
   const [currentSuggestionViewIndex, setCurrentSuggestionViewIndex] = useState(0);
 
-  // --- Logic for filtering drafts based on "Hide Bad Edits" ---
+  const hasBadEdits = useMemo(() => 
+    editSuggestions.some(sugg => sugg.score < 1), 
+  [editSuggestions]);
+
+  useEffect(() => {
+    if (!hasBadEdits && hideBadEditsActive) {
+        setHideBadEditsActive(false);
+    }
+  }, [hasBadEdits, hideBadEditsActive]);
+
   const badSuggestionIndices = useMemo(() => {
     if (!hideBadEditsActive) return [];
     return editSuggestions.reduce((acc, sugg, index) => {
@@ -358,13 +366,13 @@ export default function EditPermutationUI() {
         const key = getDraftKey(draft);
         const vector = draftVectorsMap.get(key);
         if (!vector) {
-            return true; // Show if no vector info (or decide behavior)
+            return true; 
         }
         for (let k_vector_idx = 1; k_vector_idx < vector.length; k_vector_idx++) {
             if (vector[k_vector_idx] === 1) {
                 const suggestionIndex = k_vector_idx - 1;
                 if (badSuggestionIndices.includes(suggestionIndex)) {
-                    return false; // Hide this draft
+                    return false; 
                 }
             }
         }
@@ -372,15 +380,14 @@ export default function EditPermutationUI() {
     });
   }, [drafts, draftVectorsMap, hideBadEditsActive, badSuggestionIndices]);
 
-  // Update selected draft if it becomes hidden
   useEffect(() => {
-    if (hideBadEditsActive && selectedDraft && selectedDraft.length > 0) {
+    if (hideBadEditsActive && selectedDraft && Array.isArray(selectedDraft) && selectedDraft.length > 0) {
         const isSelectedDraftVisible = visibleDrafts.some(d => getDraftKey(d) === getDraftKey(selectedDraft));
         if (!isSelectedDraftVisible) {
             const firstVisible = visibleDrafts.length > 0 ? visibleDrafts[0] : [];
             setSelectedDraft(firstVisible);
             setCurrentEditText(charArrayToString(firstVisible));
-            console.log("Selected draft was hidden by filter, selection reset.");
+            // console.log("Selected draft was hidden by filter, selection reset.");
         }
     }
   }, [hideBadEditsActive, visibleDrafts, selectedDraft]);
@@ -393,12 +400,10 @@ export default function EditPermutationUI() {
         from: from ? charArrayToString(from) : null,
         to: to ? charArrayToString(to) : "",
     }));
-    if (!hideBadEditsActive) return currentStringEdges;
+    if (!hideBadEditsActive || badSuggestionIndices.length === 0) return currentStringEdges;
     
     const visibleDraftContentStrings = new Set(visibleDrafts.map(d => charArrayToString(d)));
     return graphEdges.filter(edge => {
-        // An edge is visible if its 'to' node is visible.
-        // And if its 'from' node is also visible (or if 'from' is null for initial drafts)
         const toNodeVisible = edge.to && visibleDraftContentStrings.has(charArrayToString(edge.to));
         const fromNodeVisible = edge.from === null || (edge.from && visibleDraftContentStrings.has(charArrayToString(edge.from)));
         return fromNodeVisible && toNodeVisible;
@@ -406,7 +411,7 @@ export default function EditPermutationUI() {
         from: from ? charArrayToString(from) : null,
         to: charArrayToString(to),
     }));
-  }, [visibleDrafts, graphEdges, hideBadEditsActive]);
+  }, [visibleDrafts, graphEdges, hideBadEditsActive, badSuggestionIndices]);
 
 
   useEffect(() => {
@@ -416,7 +421,7 @@ export default function EditPermutationUI() {
     };
     window.addEventListener("keydown", handleKey);
     return () => window.removeEventListener("keydown", handleKey);
-  }, [history, redoStack, drafts, editSuggestions, draftVectorsMap]); // Added dependencies used in saveHistory
+  }, [history, redoStack, drafts, editSuggestions, draftVectorsMap]); 
   
   function saveHistory(newDraftsData, newEdgesData) {
     setHistory(h => [...h, { drafts: drafts, suggestions: editSuggestions, draftVectors: draftVectorsMap }]);
@@ -470,7 +475,7 @@ export default function EditPermutationUI() {
     setEditSuggestions([]);
     editSuggestionCounterRef.current = 1; 
     setShowSuggestionsDialog(false); 
-    setHideBadEditsActive(false); // Reset filter
+    setHideBadEditsActive(false); 
   }
 
   function applyEdit() {
@@ -723,7 +728,6 @@ export default function EditPermutationUI() {
         fileContent += `--- DRAFT ${index + 1} ---\n`;
         const score = calculateDraftScore(draftCharArr, draftVectorsMap, editSuggestions);
         fileContent += `Draft Score: ${score}\n`;
-        // Vector is now part of the DRAFT VECTORS section
         const text = charArrayToString(draftCharArr);
         const indentedText = text.split('\n').map(line => `    ${line}`).join('\n');
         fileContent += `Text:\n${indentedText}\n\n`;
@@ -855,12 +859,14 @@ export default function EditPermutationUI() {
         <div><input type="file" accept=".txt" style={{ display: 'none' }} ref={fileInputRef} onChange={handleFileUpload}/><button onClick={() => fileInputRef.current && fileInputRef.current.click()} className="bg-sky-600 text-white px-4 py-2 rounded hover:bg-sky-700">Upload Drafts File</button></div>
         {drafts.length > 0 && (<button onClick={saveAllDraftsToFile} className="bg-purple-600 text-white px-4 py-2 rounded hover:bg-purple-700">Download All Drafts</button>)}
         {editSuggestions.length > 0 && (<button onClick={() => { setCurrentSuggestionViewIndex(0); setShowSuggestionsDialog(true); }} className="bg-yellow-500 text-white px-4 py-2 rounded hover:bg-yellow-600">View Edit Suggestions ({editSuggestions.length})</button>)}
-         <button 
-            onClick={() => setHideBadEditsActive(prev => !prev)} 
-            className={`px-4 py-2 rounded text-white ${hideBadEditsActive ? 'bg-red-500 hover:bg-red-600' : 'bg-indigo-500 hover:bg-indigo-600'}`}
-        >
-            {hideBadEditsActive ? "Show Bad Edits" : "Hide Bad Edits"}
-        </button>
+        {hasBadEdits && ( // Conditionally render the Hide/Show Bad Edits button
+            <button 
+                onClick={() => setHideBadEditsActive(prev => !prev)} 
+                className={`px-4 py-2 rounded text-white ${hideBadEditsActive ? 'bg-red-500 hover:bg-red-600' : 'bg-indigo-500 hover:bg-indigo-600'}`}
+            >
+                {hideBadEditsActive ? "Show All Edits" : "Hide Bad Edits"}
+            </button>
+        )}
       </div>
       
       {showSuggestionsDialog && editSuggestions.length > 0 && (
@@ -883,7 +889,6 @@ export default function EditPermutationUI() {
                 <h2 className="text-xl font-semibold text-center mb-2">All Drafts ({displayStringDrafts.length}):</h2>
                 <ul className="flex flex-wrap gap-2 justify-center bg-gray-50 p-3 rounded-md shadow max-h-[400px] overflow-y-auto">
                    {displayStringDrafts.map((text, i) => {
-                       // Important: use visibleDrafts[i] to get the actual draft object for key and selection
                        const actualDraftCharArr = visibleDrafts[i];
                        const draftKey = getDraftKey(actualDraftCharArr);
                        return (
