@@ -469,6 +469,7 @@ export default function EditPermutationUI() {
   }
 
   function applyEdit() {
+    console.log("applyEdit function was definitely called!");
     console.log("%cAPPLY EDIT START", "color: blue; font-weight: bold;");
     if (!selectedDraft || !Array.isArray(selectedDraft)) {
         console.error("Selected draft is invalid or not an array", selectedDraft);
