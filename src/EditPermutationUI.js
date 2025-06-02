@@ -469,6 +469,14 @@ export default function EditPermutationUI() {
   }
 
   function applyEdit() {
+    debugger; // <-- Add this line
+    // The console.log you might have added can stay or be removed for this test
+    // console.log("APPLY EDIT WAS CALLED - debugger test"); 
+    console.log("%cAPPLY EDIT START", "color: blue; font-weight: bold;"); // Existing log
+    if (!selectedDraft || !Array.isArray(selectedDraft)) {
+        console.error("Selected draft is invalid or not an array", selectedDraft);
+        return;
+    }
     console.log("applyEdit function was definitely called!");
     console.log("%cAPPLY EDIT START", "color: blue; font-weight: bold;");
     if (!selectedDraft || !Array.isArray(selectedDraft)) {
