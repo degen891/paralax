@@ -1050,13 +1050,16 @@ console.log(`[ApplyEdit] trimmedSegment: "${trimmedSegment}", isTrueSentence: ${
                  {/* Submit/Undo/Redo buttons are now BEFORE the Conditions display */}
                 <div className="flex space-x-2 mt-4 justify-center">
                   <button
-                    onClick={applyEdit}
+                    onClick={() => {
+                      debugger;
+                      alert("Submit Edit button was clicked!");
+                      // applyEdit(); // You can optionally try calling it here too if the debugger hits
+                    }}
                     className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"
                     disabled={!selectedDraft || selectedDraft.length === 0}
                   >
                     Submit Edit
                   </button>
-                  <button
                     onClick={undo}
                     className="bg-gray-200 px-4 py-2 rounded hover:bg-gray-300"
                   >
