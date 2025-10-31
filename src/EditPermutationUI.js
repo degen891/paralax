@@ -447,7 +447,6 @@ null,
     }));
   }, [visibleDraftsUnsorted, graphEdges]);
 
-  // --- ADDED/MODIFIED BLOCK ---
   const suggestionsForSelectedDraft = useMemo(() => {
     if (!selectedDraft || selectedDraft.length === 0) {
       return [];
@@ -464,7 +463,6 @@ null,
     );
     return [...forward, ...reverse];
   }, [selectedDraft, editSuggestions, reverseEditSuggestions]);
-  // --- END OF ADDED/MODIFIED BLOCK ---
 
 useEffect(() => {
     const handleKey = e => {
@@ -494,8 +492,7 @@ const prevState = history[history.length - 1];
 const newSelectedDraft = prevState.drafts[0] || [];
     setSelectedDraft(newSelectedDraft);
     setCurrentEditText(charArrayToString(newSelectedDraft));
-    if (showSuggestionsDialog) { // <-- MODIFIED BLOCK
-        // Recalculate suggestions for the draft we are undoing *to*
+    if (showSuggestionsDialog) { 
         const prevDraftKey = getDraftKey(newSelectedDraft);
         const prevForward = prevState.suggestions.filter(s => getDraftKey(s.selectedDraftAtTimeOfEdit) === prevDraftKey);
         const prevReverse = (prevState.reverseSuggestions || []).filter(s => getDraftKey(s.selectedDraftAtTimeOfEdit) === prevDraftKey);
@@ -524,8 +521,7 @@ setRedoStack(r => r.slice(1));
     setSelectedDraft(newSelectedDraft);
     setCurrentEditText(charArrayToString(newSelectedDraft));
     
-    // Logic for redo is simpler, just check if the dialog should close
-    if (showSuggestionsDialog) { // <-- ADDED BLOCK
+    if (showSuggestionsDialog) { 
         const nextDraftKey = getDraftKey(newSelectedDraft);
         const nextForward = nextState.suggestions.filter(s => getDraftKey(s.selectedDraftAtTimeOfEdit) === nextDraftKey);
         const nextReverse = (nextState.reverseSuggestions || []).filter(s => getDraftKey(s.selectedDraftAtTimeOfEdit) === nextDraftKey);
@@ -959,26 +955,44 @@ return conditionParts.map(part => `'${part.text}'`).join(' + ');
 
   // --- MODIFIED FUNCTION ---
   function handleIncrementScore(suggestionId) {
+    let foundSuggestion = null;
+
     if (suggestionId > 0) {
       setEditSuggestions(prevSuggestions =>
-          prevSuggestions.map(suggestion =>
-              suggestion.id === suggestionId
-                  ? { ...suggestion, score: suggestion.score + 1 }
-                  : suggestion
-          )
+          prevSuggestions.map(suggestion => {
+              if (suggestion.id === suggestionId) {
+                  const updatedSuggestion = { ...suggestion, score: suggestion.score + 1 };
+                  foundSuggestion = updatedSuggestion; // Grab the suggestion
+                  return updatedSuggestion;
+              }
+              return suggestion;
+          })
       );
     } else {
       setReverseEditSuggestions(prevSuggestions =>
-          prevSuggestions.map(suggestion =>
-              suggestion.id === suggestionId
-                  ? { ...suggestion, score: suggestion.score + 1 }
-                  : suggestion
-          )
+          prevSuggestions.map(suggestion => {
+              if (suggestion.id === suggestionId) {
+                  const updatedSuggestion = { ...suggestion, score: suggestion.score + 1 };
+                  foundSuggestion = updatedSuggestion; // Grab the suggestion
+                  return updatedSuggestion;
+              }
+              return suggestion;
+          })
       );
+    }
+
+    // Now, if we found a suggestion and its resulting draft is not empty, navigate to it.
+    if (foundSuggestion && 
+        foundSuggestion.resultingDraft && 
+        !isDraftContentEmpty(foundSuggestion.resultingDraft)) { // Check if draft is non-empty
+        
+        setSelectedDraft(foundSuggestion.resultingDraft);
+        setCurrentEditText(charArrayToString(foundSuggestion.resultingDraft));
+        setCurrentSuggestionViewIndex(0); // Reset index for the new list of suggestions
     }
 }
 
-  // --- MODIFIED FUNCTION ---
+  // --- UNCHANGED FUNCTION ---
   function handleDecrementScore(suggestionId) {
     if (suggestionId > 0) {
       setEditSuggestions(prevSuggestions =>
@@ -1044,7 +1058,6 @@ return conditionParts.map(part => `'${part.text}'`).join(' + ');
         )}
       </div>
 
-      {/* --- MODIFIED BLOCK --- */}
       {/* Row for View Edit Suggestions (if any suggestions exist) */}
       {suggestionsForSelectedDraft.length > 0 && (
           <div className="my-2 flex space-x-2 justify-center">
@@ -1072,7 +1085,6 @@ return conditionParts.map(part => `'${part.text}'`).join(' + ');
     onDecrementScore={handleDecrementScore}
         />
       )}
-      {/* --- END OF MODIFIED BLOCK --- */}
 
       {drafts.length > 0 && (
         <>
